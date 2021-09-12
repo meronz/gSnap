@@ -78,6 +78,8 @@ ts_library(
         ":tilespec_lib",
         ":settings_lib",
         ":monitors_lib",
+        ":layouts_lib",
+        ":layouticon_lib",
     ],
 )
 ts_library(
@@ -200,6 +202,23 @@ ts_library(
         ":settings_data_lib",
         ":tilespec_lib",
     ]
+)
+
+ts_library(
+    name = "layouts_lib",
+    srcs = ["layouts.ts"],
+    tsconfig = "//:tsconfig-app.json",
+    deps = [
+    ],
+)
+
+ts_library(
+    name = "layouticon_lib",
+    srcs = ["layouticon.ts"],
+    tsconfig = "//:tsconfig-app.json",
+    deps = [
+        ":layouts_lib",
+    ],
 )
 
 jasmine_node_test(

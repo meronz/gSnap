@@ -39,20 +39,19 @@ z-index: 99;
 
 .tiling-icon
 {
-    width: 24px;
-    height: 24px;
-    background-image: url("images/launcher_16.png");
-    background-size: 16px 16px;
+    width: 16px;
+    height: 16px;
+    opacity: 0.2;
 }
 
 .tiling-icon:hover
 {
-    background-image: url("images/launcher_16_hover.png");
+    opacity: 1.0;
 }
 
 .tiling-icon:activate
 {
-    background-image: url("images/launcher_16_activated.png");
+    opacity: 1.0;
 }
 
 .close-button-container

@@ -45,6 +45,10 @@ import {
     SETTINGS_WINDOW_MARGIN
 } from './settings';
 
+import { LayoutDefinition, Layouts, WorkspaceMonitorSettings } from './layouts';
+import { LayoutIcon } from './layouticon';
+import { AnySettingName } from './settings_data';
+
 /*****************************************************************
 
  This extension has been developed by micahosborne
@@ -66,6 +70,7 @@ const Main = imports.ui.main;
 const Shell = imports.gi.Shell;
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
+const Gio = imports.gi.Gio;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 const Meta = imports.gi.Meta;
@@ -391,26 +396,6 @@ const keyBindingGlobalResizes: Bindings = new Map([
     }],
 ]);
 
-interface WorkspaceMonitorSettings {
-    current: number
-};
-
-interface ZoneDefinition {
-    length: number
-};
-
-interface LayoutDefinition {
-    type: number,
-    name: string,
-    length: number,
-    items: ZoneDefinition[]
-};
-
-interface Layouts {
-    workspaces: WorkspaceMonitorSettings[][],
-    definitions: LayoutDefinition[]
-};
-
 class App {
     private gridShowing: boolean = false;
     private widgets: StWidget[] = [];
@@ -418,6 +403,7 @@ class App {
     private editor: (ZoneEditor | null)[];
     private preview: (ZonePreview | null)[];
     private tabManager: (ZoneManager | null)[];
+    private layoutIcons: any[] = [];
 
     private currentLayout: any = null;
     public layouts : Layouts = {
@@ -479,6 +465,7 @@ class App {
             this.tabManager[monitorIndex] = new ZoneManager(activeMonitors()[monitorIndex], this.currentLayout, gridSettings[SETTINGS_WINDOW_MARGIN]);
         }
        
+        (<any>launcher)?.setIcon(this.layoutIcons[layoutIndex]);
         this.tabManager[monitorIndex]?.layoutWindows();
         this.reloadMenu();
     }
@@ -512,6 +499,7 @@ class App {
                 log(JSON.stringify(this.layouts));
                 if(this.refreshLayouts()) {
                     this.saveLayouts();
+                    this.saveLayoutIcons();
                 }
             }
         } catch (exception) {
@@ -521,9 +509,9 @@ class App {
                 this.layouts = JSON.parse(contents);
                 this.refreshLayouts();
                 this.saveLayouts();
+                this.saveLayoutIcons();
             }
         }
-
 
         this.setToCurrentWorkspace();
         monitorsChangedConnect = Main.layoutManager.connect(
@@ -717,6 +705,7 @@ class App {
                 });
                 this.setLayout(this.layouts.definitions.length - 1);
                 this.saveLayouts();
+                this.saveLayoutIcons();
                 this.reloadMenu();
             }
             dialog.open(global.get_current_time());
@@ -736,6 +725,7 @@ class App {
         });
         saveLayoutButton.connect('activate', () => {
             this.saveLayouts();
+            this.saveLayoutIcons();
             this.setToCurrentWorkspace();
             this.reloadMenu();
             //(<any>launcher).menu.removeMenuItem(item2);
@@ -809,6 +799,22 @@ class App {
             windows[i].unminimize();
         }
 
+    }
+
+    saveLayoutIcons() {
+        log(`Regenerate ${this.layouts.definitions.length} icons`);
+        try {
+            this.layoutIcons = [];
+            const renderer = new LayoutIcon();
+            for (let i = 0; i < this.layouts.definitions.length; i++) {
+                const fileName = getCurrentPath()?.replace("/extension.js", `/images/layout_${i}.svg`);
+                const layout = this.layouts.definitions[i];
+                GLib.file_set_contents(fileName, renderer.renderSvg(layout));
+                this.layoutIcons.push(Gio.icon_new_for_string(fileName));
+            }
+        } catch (exception) {
+            log(JSON.stringify(exception));
+        }
     }
 
     disable() {
@@ -891,47 +897,43 @@ interface GSnapStatusButtonInterface {
     deactivate(): void;
 
     destroy(): void;
+
+    setIcon(gicon: any): void;
 };
+
 const GSnapStatusButton = GObject.registerClass({
         GTypeName: 'GSnapStatusButton',
     }, class GSnapStatusButton extends PanelMenu.Button {
+        _icon: any;
+
         _init(classname: string) {
             super._init(0.0, "gSnap", false);
 
             //Done by default in PanelMenuButton - Just need to override the method
-            if (SHELL_VERSION.version_at_least_34()) {
-                this.add_style_class_name(classname);
-                this.connect('button-press-event', this._onButtonPress);
-            } else {
-                this.actor.add_style_class_name(classname);
-                this.actor.connect('button-press-event', this._onButtonPress);
-            }
+            this._icon = new St.Icon({
+                style_class: 'system-status-icon',
+            });
+
+            this.add_actor(this._icon);
+            this.connect('button-press-event', this._onButtonPress);
             log("GSnapStatusButton _init done");
         }
 
         reset() {
             this.activated = false;
-            if (SHELL_VERSION.version_at_least_34()) {
-                this.remove_style_pseudo_class('activate');
-            } else {
-                this.actor.remove_style_pseudo_class('activate');
-            }
+            this.remove_style_pseudo_class('activate');
         }
 
         activate() {
-            if (SHELL_VERSION.version_at_least_34()) {
-                this.add_style_pseudo_class('activate');
-            } else {
-                this.actor.add_style_pseudo_class('activate');
-            }
+            this.add_style_pseudo_class('activate');
         }
 
         deactivate() {
-            if (SHELL_VERSION.version_at_least_34()) {
-                this.remove_style_pseudo_class('activate');
-            } else {
-                this.actor.remove_style_pseudo_class('activate');
-            }
+            this.remove_style_pseudo_class('activate');
+        }
+
+        setIcon(gicon: any) {
+            this._icon.gicon = gicon;
         }
 
         _onButtonPress(actor, event) {
