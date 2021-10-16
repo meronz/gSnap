@@ -41,8 +41,8 @@ export class ZoneBase {
         return (
             this.x <= x &&
             this.y <= y &&
-            this.x + this.width >= x + width &&
-            this.y + this.height >= y + height
+            this.x + this.totalWidth() >= x + width &&
+            this.y + this.totalHeight() >= y + height
         );
     }
 
@@ -76,8 +76,8 @@ export class ZoneBase {
 
     public set x(v : number) {
         if(this._x !== v) {
-        this._x = v;
-        this.positionChanged();
+            this._x = v;
+            this.positionChanged();
         }
     }
 
@@ -865,11 +865,77 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public layoutWindows() {
-        let windows = getWindowsOfMonitor(this.monitor);
+        let wsm: WorkspaceManagerInterface = (global.workspace_manager);
+        let windows = wsm
+            .get_active_workspace()
+            .list_windows()
+            .filter(w => w.get_window_type() == WindowType.NORMAL);
 
-        for (let c = 0; c < this.children.length; c++) {
-            let child = this.children[c];
-            child.adjustWindows(windows);
+        log(`Layout windows start ${windows.length}`);
+        windows.forEach(win => {
+            let outerRect = win.get_frame_rect();
+            let midX = outerRect.x + (outerRect.width / 2);
+            let midY = outerRect.y + (outerRect.height / 2);
+
+            let rect = this.getTotalZoneRect(midX, midY);
+            if(!rect)
+                return;
+
+            log(`Moving window ${win.get_wm_class()} to ${rect.toString()}`);
+            win.move_frame(true, rect.origin.x, rect.origin.y);
+            win.move_resize_frame(
+                true,
+                rect.origin.x,
+                rect.origin.y,
+                rect.size.width,
+                rect.size.height);
+        });
+
+        log('Layout windows end')
+    }
+
+    // Returns the Rect describing the area made by the selected zones found on findX, findY
+    // null if findX, findY isn't contained in any zone.
+    private getTotalZoneRect(findX: number, findY: number): tilespec.Rect | null
+    {
+        let zones = this.children.filter(c => c.contains(findX, findY));
+        if(zones.length == 0)
+            return null;
+
+        log(`zones selected: ${zones.length}`);
+        let zonesSortedByX = [...zones].sort((a, b) => a.x() > b.x() ? 1 : a.x() < b.x() ? -1 : 0);
+        let zonesSortedByY = [...zones].sort((a, b) => a.y() > b.y() ? 1 : a.y() < b.y() ? -1 : 0);
+
+        let x = zonesSortedByX[0].innerX();
+        let y = zonesSortedByY[0].innerY();
+        log(`x: ${x}, y: ${y}`);
+
+        let width = zonesSortedByX[zonesSortedByX.length-1].innerX() + zonesSortedByX[zonesSortedByX.length-1].innerWidth() - x;
+        let height = zonesSortedByY[zonesSortedByY.length-1].innerY() + zonesSortedByY[zonesSortedByY.length-1].innerHeight() - y;
+        log(`width: ${width}, height: ${height}`);
+
+        return new tilespec.Rect(
+            new tilespec.XY(x, y),
+            new tilespec.Size(width, height)
+        );
+    }
+
+    public moveWindowToWidgetAtCursor(win: Window) {
+        let [x, y] = global.get_pointer();
+        let c = this.recursiveChildren();
+        for (let i = 0; i < c.length; i++) {
+            c[i].hide();
+            let rect = this.getTotalZoneRect(x,y);
+            if (rect) {
+                log(`Moving window ${win.get_wm_class()} to ${rect.toString()}`);
+                win.move_frame(true, rect.origin.x, rect.origin.y);
+                win.move_resize_frame(
+                    true,
+                    rect.origin.x,
+                    rect.origin.y,
+                    rect.size.width,
+                    rect.size.height);
+            }
         }
     }
 
@@ -912,7 +978,6 @@ class EntryDialogClass extends ModalDialog.ModalDialog {
     public onOkay: any | null;
 
     public _onClose() {
-
         try {
             this.onOkay(this.entry.text);
         } catch (e) {
