@@ -324,7 +324,6 @@ class App {
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.hide();
                     this.tabManager[m.index]?.moveWindowToWidgetAtCursor(win);
-                    this.tabManager[m.index]?.layoutWindows();
                 });
             }
         });
