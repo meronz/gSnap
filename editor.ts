@@ -5,7 +5,6 @@ import { log } from './logging';
 
 import {
     ClutterActor,
-    MetaWindow,
     StBoxLayout,
     StButton,
     StWidget,
@@ -22,6 +21,7 @@ const Main = imports.ui.main;
 const GObject = imports.gi.GObject;
 const Clutter = imports.gi.Clutter;
 const ModalDialog = imports.ui.modalDialog;
+const Mainloop = imports.mainloop;
 
 export class ZoneBase {
     private _x: number = 0;
@@ -138,6 +138,10 @@ export class ZoneBase {
 
     }
 
+    public hover(hovering: boolean) { 
+
+    }
+
     public positionChanged() {
 
     }
@@ -202,6 +206,15 @@ export class Zone extends ZoneBase {
     public show() {
         this.widget.visible = true;
         this.widget.add_style_pseudo_class('activate');
+    }
+
+    public hover(hovering: boolean)
+    {
+        // this is needed to highlight windows on hover
+        // while dragging a window in the zone
+        hovering
+            ? this.widget?.add_style_pseudo_class('hover')
+            : this.widget?.remove_style_pseudo_class('hover');
     }
 
     public destroy() {
@@ -687,6 +700,16 @@ export class ZoneDisplay extends ZoneGroup {
         }
     }
 
+    public highlightZonesAtCursor()
+    {
+        let [x, y] = global.get_pointer();
+        let c = this.recursiveChildren();
+        for (let i = 0; i < c.length; i++) {
+            let contained = c[i].contains(x, y);
+            c[i].hover(contained);
+        }
+    }
+
     protected createMarginItem() {
 
     }
@@ -830,6 +853,8 @@ export class ZonePreview extends ZoneDisplay {
 }
 
 export class ZoneManager extends ZoneDisplay {
+    private isShowing: boolean = false;
+
     constructor(monitor: Monitor, layout: LayoutItem, margin: number) {
         super(monitor, layout, margin);
     }
@@ -846,6 +871,27 @@ export class ZoneManager extends ZoneDisplay {
             let child = this.children[c];
             child.adjustWindows(windows);
         }
+    }
+
+    public show() {
+        super.show();
+        this.isShowing = true;
+        this.trackCursorUpdates();
+    }
+
+    public hide() {
+        this.isShowing = false;
+        super.hide();
+    }
+
+    private trackCursorUpdates() {
+        Mainloop.timeout_add(25, () => {
+            if(!this.isShowing){
+                return false;
+            }
+            this.highlightZonesAtCursor();
+            return true;
+        });
     }
 }
 
