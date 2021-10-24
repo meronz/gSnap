@@ -8,11 +8,13 @@ import {
     StBoxLayout,
     StButton,
     StWidget,
-    Window
+    Window,
+    WindowType,
+    WorkspaceManager as WorkspaceManagerInterface
 } from "./gnometypes";
 
 import { areEqual, getWorkAreaByMonitor, getWindowsOfMonitor, Monitor, WorkArea } from './monitors';
-
+import { Rect, XY, Size } from './tilespec';
 import { LayoutItem } from './layouts';
 
 // Library imports
@@ -22,6 +24,10 @@ const GObject = imports.gi.GObject;
 const Clutter = imports.gi.Clutter;
 const ModalDialog = imports.ui.modalDialog;
 const Mainloop = imports.mainloop;
+const WorkspaceManager: WorkspaceManagerInterface = (global.screen || global.workspace_manager);
+
+// TODO: expose as setting
+const HIGHLIGHT_MARGIN = 16;
 
 export class ZoneBase {
     private _x: number = 0;
@@ -39,10 +45,10 @@ export class ZoneBase {
 
     public contains(x: number, y: number, width: number = 1, height: number = 1): boolean {
         return (
-            this.x <= x &&
-            this.y <= y &&
-            this.x + this.totalWidth() >= x + width &&
-            this.y + this.totalHeight() >= y + height
+            Math.max(0, this.x - HIGHLIGHT_MARGIN) <= x &&
+            Math.max(0, this.y - HIGHLIGHT_MARGIN) <= y &&
+            this.x + this.totalWidth + HIGHLIGHT_MARGIN >= x + width &&
+            this.y + this.totalHeight + HIGHLIGHT_MARGIN >= y + height
         );
     }
 
@@ -865,8 +871,7 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public layoutWindows() {
-        let wsm: WorkspaceManagerInterface = (global.workspace_manager);
-        let windows = wsm
+        let windows = WorkspaceManager
             .get_active_workspace()
             .list_windows()
             .filter(w => w.get_window_type() == WindowType.NORMAL);
@@ -896,27 +901,27 @@ export class ZoneManager extends ZoneDisplay {
 
     // Returns the Rect describing the area made by the selected zones found on findX, findY
     // null if findX, findY isn't contained in any zone.
-    private getTotalZoneRect(findX: number, findY: number): tilespec.Rect | null
+    private getTotalZoneRect(findX: number, findY: number): Rect | null
     {
-        let zones = this.children.filter(c => c.contains(findX, findY));
+        let children = this.recursiveChildren();
+        let zones = children.filter(c => c.contains(findX, findY));
+        log(`getTotalZone ${zones.length}`);
         if(zones.length == 0)
             return null;
 
         log(`zones selected: ${zones.length}`);
-        let zonesSortedByX = [...zones].sort((a, b) => a.x() > b.x() ? 1 : a.x() < b.x() ? -1 : 0);
-        let zonesSortedByY = [...zones].sort((a, b) => a.y() > b.y() ? 1 : a.y() < b.y() ? -1 : 0);
-
-        let x = zonesSortedByX[0].innerX();
-        let y = zonesSortedByY[0].innerY();
-        log(`x: ${x}, y: ${y}`);
-
-        let width = zonesSortedByX[zonesSortedByX.length-1].innerX() + zonesSortedByX[zonesSortedByX.length-1].innerWidth() - x;
-        let height = zonesSortedByY[zonesSortedByY.length-1].innerY() + zonesSortedByY[zonesSortedByY.length-1].innerHeight() - y;
+        
+        let firstZone = zones[0];
+        log(`x: ${firstZone.innerX}, y: ${firstZone.innerY}`);
+        
+        let lastZone = zones[zones.length-1];
+        let width = lastZone.innerX + lastZone.innerWidth - firstZone.innerX;
+        let height = lastZone.innerY + lastZone.innerHeight - firstZone.innerY;
         log(`width: ${width}, height: ${height}`);
 
-        return new tilespec.Rect(
-            new tilespec.XY(x, y),
-            new tilespec.Size(width, height)
+        return new Rect(
+            new XY(firstZone.innerX, firstZone.innerY),
+            new Size(width, height)
         );
     }
 
