@@ -3,13 +3,14 @@ export interface WorkspaceMonitorSettings {
 };
 
 export interface LayoutItem {
-    type: number,
-    length: number,
-    items: LayoutItem[]
+    // width and height of the LayoutItem in percentage of the available screen
+    widthPerc: number,
+    heightPerc: number,
 };
 
-export interface Layout extends LayoutItem{
+export interface Layout {
     name: string,
+    items: LayoutItem[],
 };
 
 export interface LayoutsSettings {
