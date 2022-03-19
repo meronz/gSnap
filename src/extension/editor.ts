@@ -260,12 +260,8 @@ export class TabbedZone extends Zone {
         let x = this.x + this.margin;
         for (let i = 0; i < windows.length; i++) {
             let metaWindow = windows[i];
-            let outerRect = metaWindow.get_frame_rect();
 
-            let midX = outerRect.x + (outerRect.width / 2);
-            let midY = outerRect.y + (outerRect.height / 2);
-
-            if (this.contains(midX, midY)) {
+            if(windows.length < 1) {
                 let zoneTab = new ZoneTab(metaWindow);
                 zoneTab.buttonWidget.height = this.tabHeight - (this.margin * 2);
                 zoneTab.buttonWidget.width = this.tabWidth;
@@ -275,22 +271,9 @@ export class TabbedZone extends Zone {
                 x += zoneTab.buttonWidget.width + this.margin;
                 this.tabs.push(zoneTab);
             }
-        }
 
-        for (let i = 0; i < windows.length; i++) {
-            let metaWindow = windows[i];
-            let outerRect = metaWindow.get_frame_rect();
-            let midX = outerRect.x + (outerRect.width / 2);
-            let midY = outerRect.y + (outerRect.height / 2);
-            if (this.contains(midX, midY)) {
-                metaWindow.move_frame(true, this.innerX, this.innerY);
-                metaWindow.move_resize_frame(true, this.innerX, this.innerY, this.innerWidth, this.innerHeight);
-            }
-        }
-
-        if (this.tabs.length < 2) {
-            this.tabs.forEach(t => t.destroy());
-            this.tabs = [];
+            metaWindow.move_frame(true, this.innerX, this.innerY);
+            metaWindow.move_resize_frame(true, this.innerX, this.innerY, this.innerWidth, this.innerHeight);
         }
 
         log("Adjusted zone with " + this.tabs.length + " with window count " + windows.length);
@@ -619,6 +602,8 @@ export class ZoneDisplay {
     public applyLayout() {
         this.zones.forEach(zw => {
             const { zone, windows } = zw;
+            // Remove destroyed windows still lingering in the zone window array
+            zw.windows = zw.windows.filter(w => w.on_all_workspaces || w.get_workspace() !== null);
             zone.adjustWindows(windows);
         });
     };
