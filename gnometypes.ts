@@ -492,7 +492,7 @@ export interface Window {
     get_work_area_all_monitors(): Rectangle;
     get_work_area_current_monitor(): Rectangle;
     get_work_area_for_monitor(which_monitor: number): Rectangle;
-    get_workspace(): void;
+    get_workspace(): Workspace;
     group_leader_changed(): void;
     has_focus(): boolean;
     is_above(): void;
