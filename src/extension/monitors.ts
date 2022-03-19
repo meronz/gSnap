@@ -66,15 +66,19 @@ function getMonitorInsets(tier: MonitorTier): Insets {
     }
 }
 
-export function getWindowsOfMonitor(monitor: Monitor) : Window[] {
+export function getCurrentWindowsOnMonitor(monitor: Monitor) : Window[] {
     let monitors = activeMonitors();
-    
+    let windows = getCurrentWindows()
+        .filter(w => monitors[w.get_monitor()] == monitor);
+    return windows;
+}
+
+export function getCurrentWindows() : Window[] {
     let windows = WorkspaceManager
         .get_active_workspace()
         .list_windows()
         .filter(w => w.get_window_type() == WindowType.NORMAL
-                  && !w.is_hidden()
-                  && monitors[w.get_monitor()] == monitor);
+                  && !w.is_hidden());
     return windows;
 }
 

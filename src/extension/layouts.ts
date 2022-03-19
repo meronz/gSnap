@@ -4,8 +4,8 @@ export interface WorkspaceMonitorSettings {
 
 export interface LayoutItem {
     // width and height of the LayoutItem in percentage of the available screen
-    widthPerc: number,
-    heightPerc: number,
+    widthPercentage: number,
+    heightPercentage: number,
 }
 
 export interface Layout {

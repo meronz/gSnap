@@ -487,7 +487,7 @@ export interface Window {
     get_transient_for(): Window | null;
     get_user_time(): number;
     get_window_type(): WindowType;
-    get_wm_class(): void;
+    get_wm_class(): string;
     get_wm_class_instance(): void;
     get_work_area_all_monitors(): Rectangle;
     get_work_area_current_monitor(): Rectangle;

@@ -187,8 +187,8 @@ class App {
             {
                 name: "2 Column",
                 items: [
-                    {widthPerc: 50, heightPerc: 50},
-                    {widthPerc: 50, heightPerc: 50},
+                    {widthPercentage: 50, heightPercentage: 50},
+                    {widthPercentage: 50, heightPercentage: 50},
                 ]
             },
         ]
@@ -290,6 +290,8 @@ class App {
 
         global.display.connect('window-created', (_display: Display, win: Window) => {
             if(validWindow(win)) {
+                var monitor = win.get_monitor();
+                this.tabManager[monitor]?.addWindow(win);
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.applyLayout();
                 });
@@ -446,7 +448,7 @@ class App {
             dialog.onOkay = (text: string) => {
                 this.layouts.definitions.push({
                     name: text,
-                    items: [{ widthPerc: 100, heightPerc: 100}]
+                    items: [{ widthPercentage: 100, heightPercentage: 100}]
                 });
                 this.setLayout(this.layouts.definitions.length - 1);
                 this.saveLayouts();
@@ -478,7 +480,7 @@ class App {
             activeMonitors().forEach(m => {
                 let layout = {
                     name: "Layout",
-                    items: [{ widthPerc: 100, heightPerc: 100}]
+                    items: [{ widthPercentage: 100, heightPercentage: 100}]
                 };
 
                 this.editor[m.index]?.destroy();

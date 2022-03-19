@@ -122,6 +122,10 @@ export class XY {
         return this.dot(b.unit())
     }
 
+    distance(b: XY) {
+        return Math.sqrt(Math.pow(this.x - this.y, 2) + Math.pow(b.x - b.y, 2));
+    }
+
     minus(b: XY) {
         return new XY(this.x - b.x, this.y - b.y)
     }
