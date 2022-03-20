@@ -15,20 +15,20 @@ import {
     WorkspaceManager as WorkspaceManagerInterface
 } from "./gnometypes";
 
-import { 
+import {
     activeMonitors,
     getCurrentMonitorIndex
 } from './monitors';
 
-import { 
-    deinitSettings, 
-    gridSettings, 
+import {
+    deinitSettings,
+    gridSettings,
     initSettings,
 } from './settings';
 
 import * as SETTINGS from './settings_data';
 
-import { Layout, LayoutsSettings, WorkspaceMonitorSettings } from './layouts';
+import {Layout, LayoutsSettings, WorkspaceMonitorSettings} from './layouts';
 
 /*****************************************************************
 
@@ -52,8 +52,6 @@ const GObject = imports.gi.GObject;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 const GLib = imports.gi.GLib;
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
 
 // Getter for accesing "get_active_workspace" on GNOME <=2.28 and >= 2.30
 const WorkspaceManager: WorkspaceManagerInterface = (
@@ -173,9 +171,6 @@ class App {
     private preview: (ZonePreview | null)[];
     private tabManager: (ZoneManager | null)[];
 
-    private readonly layoutsPath = `${Me.path}/layouts.json`;
-    private readonly layoutsDefaultPath =`${Me.path}/layouts-default.json`;
-
     private currentLayout: Layout;
     public layouts : LayoutsSettings = {
         // [workspaceindex][monitorindex]
@@ -254,7 +249,7 @@ class App {
 
     enable() {
         try {
-            let [ok, contents] = GLib.file_get_contents(this.layoutsPath);
+            let [ok, contents] = GLib.file_get_contents(getCurrentPath()?.replace("/extension.js", "/layouts.json"));
             if (ok) {
                 log("Loaded contents " + contents);
                 this.layouts = JSON.parse(contents);
@@ -265,7 +260,7 @@ class App {
             }
         } catch (exception) {
             log(JSON.stringify(exception));
-            let [ok, contents] = GLib.file_get_contents(this.layoutsDefaultPath);
+            let [ok, contents] = GLib.file_get_contents(getCurrentPath()?.replace("/extension.js", "/layouts-default.json"));
             if (ok) {
                 this.layouts = JSON.parse(contents);
                 this.refreshLayouts();
@@ -535,7 +530,7 @@ class App {
             this.editor[m.index]?.destroy();
             this.editor[m.index] = null;
         });
-        GLib.file_set_contents(this.layoutsPath, JSON.stringify(this.layouts));
+        GLib.file_set_contents(getCurrentPath()?.replace("/extension.js", "/layouts.json"), JSON.stringify(this.layouts));
         log(JSON.stringify(this.layouts));
 
         var windows = WorkspaceManager.get_active_workspace().list_windows();
