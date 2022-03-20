@@ -3,23 +3,17 @@ declare var imports: any;
 declare var global: any;
 import {log} from './logging';
 
-import {
-    ClutterActor,
-    StBoxLayout,
-    StButton,
-    StWidget,
-    Window
-} from "./gnometypes";
+import {ClutterActor, StBoxLayout, StButton, StWidget, Window} from "./gnometypes";
 
 import {
     areEqual,
-    getWorkAreaByMonitor,
+    getCurrentWindows,
     getCurrentWindowsOnMonitor,
+    getWorkAreaByMonitor,
     Monitor,
-    WorkArea,
-    getCurrentWindows
+    WorkArea
 } from './monitors';
-import {Rect, XY, Size, LineSegment} from './tilespec';
+import {joinType, JoinType, Rect, Size, XY} from './tilespec';
 import {Layout, LayoutItem} from './layouts';
 
 // Library imports
@@ -57,6 +51,13 @@ export class ZoneBase {
             Math.max(0, this.y - HIGHLIGHT_MARGIN) <= y &&
             this.x + this.totalWidth + HIGHLIGHT_MARGIN >= x + width &&
             this.y + this.totalHeight + HIGHLIGHT_MARGIN >= y + height
+        );
+    }
+
+    public get rect(): Rect {
+        return new Rect(
+            new XY(this.x, this.y),
+            new Size(this.width, this.height)
         );
     }
 
@@ -458,6 +459,7 @@ export class ZoneAnchor {
     }
 }
 
+
 interface ZoneWindows {
     zone: Zone;
     windowIds: Set<number>;
@@ -501,27 +503,34 @@ export class ZoneDisplay {
         }
 
         let zonesTouchedByPointer = this.zones.filter(zw => zw.zone.contains(x, y)).map(zw => zw.zone);
-        let zonesTouchedByPointerIdx = zonesTouchedByPointer.map((_, idx) => idx);
 
         if(zonesTouchedByPointer.length >= 2) {
             log("Joining zones");
             let newZoneRect = this.getTotalZoneRect(zonesTouchedByPointer);
+            let zonesToDeleteIndexes = this.zones.filter(z => newZoneRect.contains(z.zone.rect)).map((_, i) => i);
             
             // Get all windows stored inside those zones and delete the latter
             let windowIds = new Set<number>();
-            for (const idx of zonesTouchedByPointerIdx) {
-                this.zones[idx].windowIds.forEach(wId => windowIds.add(wId));
-                this.zones.splice(idx, 1);
+            for (const i of zonesToDeleteIndexes) {
+                this.zones[i].windowIds.forEach(wId => windowIds.add(wId));
+                this.zones.splice(i, 1);
             }
             log(`Moving ${windowIds.size}`);
-            
+
             let newZone = this.createZone(
                 newZoneRect.origin.x, 
                 newZoneRect.origin.y, 
                 newZoneRect.size.width, 
                 newZoneRect.size.height,
                 this.margin);
-            newZoneIdx = this.zones.push({zone: newZone, windowIds: windowIds}) - 1;
+
+            newZoneIdx = zonesToDeleteIndexes[0]
+            this.zones.splice(newZoneIdx, 0, {zone: newZone, windowIds: windowIds});
+            
+            for (let i = 0; i < this.zones.length; i++) {
+                this.zones[i].zone.index = i;
+            }
+
             log(`Joined zone {${newZone.toString()}`)
         }
 
@@ -535,15 +544,16 @@ export class ZoneDisplay {
     private getTotalZoneRect(zones: ZoneBase[]): Rect {
         log(`zones selected: ${zones.length}`);
 
-        // find smallest X
+        // find smallest X,Y
         let x = zones.reduce((p, c) => Math.min(p, c.x), zones[0].x);
         let y = zones.reduce((p, c) => Math.min(p, c.y), zones[0].y);
         let w: number;
         let h: number;
         
         if(zones.length == 2) {
-            //TODO;
-            let horiz = false;
+            let edgesA = zones[0].rect.edges();
+            let edgesB = zones[1].rect.edges();
+            let horiz = joinType(edgesA, edgesB) === JoinType.Horizontal;
             if (horiz) {
                 w = zones.reduce((p, c) => p + c.width, 0);
                 h = zones[0].height;
@@ -675,6 +685,8 @@ export class ZoneDisplay {
     }
 
     public applyLayout() {
+        if(this.zones.length === 0) return;
+
         let currentWindows = getCurrentWindows();
         
         // Add new windows not previously known
@@ -710,7 +722,6 @@ export class ZoneDisplay {
     }
 
     public show() {
-        this.init();
         this.zones.forEach(zw => zw.zone.show());
     }
 
