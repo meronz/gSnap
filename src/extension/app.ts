@@ -292,9 +292,8 @@ class App {
         global.display.connect('window-created', (_display: Display, win: Window) => {
             log('Evt: window-created');
             if(validWindow(win)) {
-                activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.applyLayout();
-                });
+                let monitor = win.get_monitor();
+                    this.tabManager[monitor]?.addWindow(win);
             }
         });
         

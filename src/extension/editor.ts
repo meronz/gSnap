@@ -8,7 +8,6 @@ import {ClutterActor, StBoxLayout, StButton, StWidget, Window} from "./gnometype
 import {
     areEqual,
     getCurrentWindows,
-    getCurrentWindowsOnMonitor,
     getWorkAreaByMonitor,
     Monitor,
     WorkArea
@@ -175,6 +174,8 @@ export class ZoneBase {
 }
 
 export class Zone extends ZoneBase {
+    public windowIds: Set<number> = new Set<number>();
+
     public widget: StWidget;
     public index: number = 0;
     styleClass: string = 'grid-preview'
@@ -220,13 +221,14 @@ export class Zone extends ZoneBase {
             : this.widget.remove_style_pseudo_class('hover');
     }
 
-    public adjustWindows(windows: Window[]) {
-        log(`${this.constructor.name}::adjustWindows ${windows.length} (${this.innerRect.toString()})`);
-        windows.forEach(w => this.moveWindowToInnerRect(w));
+    public adjustWindows(currentWindows: readonly Window[]) {
+        let myWindows = currentWindows.filter(w => this.windowIds.has(w.get_id()))
+        log(`${this.toString()}::adjustWindows ${myWindows.length}`);
+        myWindows.forEach(w => this.moveWindowToZone(w));
     }
-    
-    private moveWindowToInnerRect(win: Window) {
-        log(`${this.constructor.name}::moveWindowToInnerRect ${win.get_wm_class()} (${win.get_id()}) to ${this.innerRect.toString()}`);
+
+    public moveWindowToZone(win: Window) {
+        log(`${this.toString()}::moveWindowToInnerRect ${win.get_wm_class()} (${win.get_id()}) to ${this.innerRect.toString()}`);
         win.move_frame(true, this.innerRect.origin.x, this.innerRect.origin.y);
         win.move_resize_frame(true, 
             this.innerRect.origin.x,
@@ -270,15 +272,17 @@ export class TabbedZone extends Zone {
         this.tabs = [];
     }
 
-    adjustWindows(windows: Window[]) {
-        log(`TabbedZone: adjustWindows ${windows.length}`);
+
+    public adjustWindows(currentWindows: readonly Window[]) {
+        let myWindows = currentWindows.filter(w => this.windowIds.has(w.get_id()))
+        log(`${this.toString()}:: adjustWindows ${myWindows.length}`);
         this.tabs.forEach(t => t.destroy());
         this.tabs = [];
 
-        if (windows.length > 1) {
+        if (myWindows.length > 1) {
             // Create tab widgets
             let x = super.innerX;
-            for (let win of windows) {
+            for (let win of myWindows) {
                 let zoneTab = new ZoneTab(win);
                 zoneTab.buttonWidget.height = this.tabHeight;
                 zoneTab.buttonWidget.width = this.tabWidth;
@@ -290,7 +294,7 @@ export class TabbedZone extends Zone {
             }
         }
 
-        super.adjustWindows(windows);
+        super.adjustWindows(currentWindows);
     }
 }
 
@@ -459,19 +463,14 @@ export class ZoneAnchor {
     }
 }
 
-
-interface ZoneWindows {
-    zone: Zone;
-    windowIds: Set<number>;
-}
-
 export class ZoneDisplay {
     protected layout: Layout;
     protected margin: number;
     protected motionConnection: any;
     protected workArea: WorkArea | null;
     protected monitor: Monitor;
-    protected zones: Array<ZoneWindows> = [];
+    protected zones: Zone[] = [];
+    protected virtualZones: Zone[] = [];
 
     public apply() {
         // var c = this.recursiveChildren();
@@ -490,93 +489,11 @@ export class ZoneDisplay {
         this.init();
     }
 
-    public moveWindowToZoneUnderCursor(win: Window) {
-        if (this.zones.length == 0) return;
-
-        let [x, y] = global.get_pointer();
-        let newZoneIdx = this.zones.findIndex(zw => zw.zone.contains(x, y));
-        if (newZoneIdx === -1) return;
-
-        // remove from old zone
-        for (const zw of this.zones) {
-            zw.windowIds.delete(win.get_id());
-        }
-
-        let zonesTouchedByPointer = this.zones.filter(zw => zw.zone.contains(x, y)).map(zw => zw.zone);
-
-        if(zonesTouchedByPointer.length >= 2) {
-            log("Joining zones");
-            let newZoneRect = this.getTotalZoneRect(zonesTouchedByPointer);
-            let zonesToDeleteIndexes = this.zones.filter(z => newZoneRect.contains(z.zone.rect)).map((_, i) => i);
-            
-            // Get all windows stored inside those zones and delete the latter
-            let windowIds = new Set<number>();
-            for (const i of zonesToDeleteIndexes) {
-                this.zones[i].windowIds.forEach(wId => windowIds.add(wId));
-                this.zones.splice(i, 1);
-            }
-            log(`Moving ${windowIds.size}`);
-
-            let newZone = this.createZone(
-                newZoneRect.origin.x, 
-                newZoneRect.origin.y, 
-                newZoneRect.size.width, 
-                newZoneRect.size.height,
-                this.margin);
-
-            newZoneIdx = zonesToDeleteIndexes[0]
-            this.zones.splice(newZoneIdx, 0, {zone: newZone, windowIds: windowIds});
-            
-            for (let i = 0; i < this.zones.length; i++) {
-                this.zones[i].zone.index = i;
-            }
-
-            log(`Joined zone {${newZone.toString()}`)
-        }
-
-        // add to new zone
-        this.zones[newZoneIdx].windowIds.add(win.get_id());
-        this.applyLayout();
-    }
-
-    // Returns the Rect describing the area made by the selected zones found on findX, findY
-    // null if findX, findY isn't contained in any zone.
-    private getTotalZoneRect(zones: ZoneBase[]): Rect {
-        log(`zones selected: ${zones.length}`);
-
-        // find smallest X,Y
-        let x = zones.reduce((p, c) => Math.min(p, c.x), zones[0].x);
-        let y = zones.reduce((p, c) => Math.min(p, c.y), zones[0].y);
-        let w: number;
-        let h: number;
-        
-        if(zones.length == 2) {
-            let edgesA = zones[0].rect.edges();
-            let edgesB = zones[1].rect.edges();
-            let horiz = joinType(edgesA, edgesB) === JoinType.Horizontal;
-            if (horiz) {
-                w = zones.reduce((p, c) => p + c.width, 0);
-                h = zones[0].height;
-            } else {
-                w = zones[0].width;
-                h = zones.reduce((p, c) => p + c.height, 0);
-            }
-        } else {
-            // More than two zones, take the bigger area by summing up the widths and heights
-            w = zones.reduce((p, c) => p + c.width, 0);
-            h = zones.reduce((p, c) => p + c.height, 0);
-        }
-        
-        let rect = new Rect(new XY(x, y), new Size(w, h));
-        log(rect.toString());
-        return rect;
-    }
-
     public highlightZonesUnderCursor() {
         let [x, y] = global.get_pointer();
-        for (const zw of this.zones) {
-            let contained = zw.zone.contains(x, y);
-            zw.zone.hover(contained);
+        for (const zone of this.zones) {
+            let contained = zone.contains(x, y);
+            zone.hover(contained);
         }
     }
 
@@ -585,17 +502,20 @@ export class ZoneDisplay {
     }
     
     public init() {
+        this.virtualZones.forEach(z => z.destroy());
+        this.virtualZones = [];
+
         this.initZones();
         this.initialLayout();
     }
-    
+
     public initZones(){
         if (!this.workArea) {
             log(`Could not get workArea for monitor ${this.monitor.index}`);
             return;
         }
 
-        this.zones.forEach(zw => zw.zone.destroy());
+        this.zones.forEach(z => z.destroy());
         this.zones = [];
 
         let x = this.workArea.x;
@@ -616,7 +536,7 @@ export class ZoneDisplay {
             );
             zone.index = index;
 
-            this.zones.push({zone, windowIds: new Set<number>()});
+            this.zones.push(zone);
             log(zone.toString());
 
             // advance the origin for the next zone
@@ -635,72 +555,169 @@ export class ZoneDisplay {
     }
 
     public initialLayout() {
-        let monitorWindows = getCurrentWindowsOnMonitor(this.monitor);
-        log(`Initial Layout windows start ${monitorWindows.length}`);
-        for (const zw of this.zones) {
-            for (const win of monitorWindows) {
-                let outerRect = win.get_frame_rect();
-                let midX = outerRect.x + (outerRect.width / 2);
-                let midY = outerRect.y + (outerRect.height / 2);
-
-                if (zw.zone.contains(midX, midY)) {
-                    log(`Pushing ${win.get_wm_class()} (${win.get_id()}) to ${zw.zone.innerRect.toString()}`);
-                    zw.windowIds.add(win.get_id());
-                }
+        let currentWindows = getCurrentWindows();
+        log(`Initial Layout windows start ${currentWindows.length}`);
+        for (const zone of this.zones) {
+            let windows = this.windowsCurrentlyPresentInZone(zone);
+            for(const win of windows) {
+                zone.windowIds.add(win.get_id());
             }
+            zone.adjustWindows(currentWindows);
         }
 
         log('Initial Layout windows end');
     }
 
     // Add window to the nearest free zone.
-    private addWindow(win: Window) {
+    public addWindow(win: Window) {
+        let winId = win.get_id();
+
         // First, let's see if we have free zones available
-        let zonesToConsider = this.zones.filter(zw => zw.windowIds.size === 0);
+        let zonesToConsider = this.zones.filter(z => z.windowIds.size === 0);
+        
+        if (zonesToConsider.length === 1) {
+            // Only one free zone available, put the window there and return
+            zonesToConsider[0].adjustWindows(getCurrentWindows());
+            return;
+        }
 
         if (zonesToConsider.length === 0) {
             // No free zone, we will consider all zones then
             zonesToConsider = this.zones;
-        } else if (zonesToConsider.length === 1) {
-            // Only one free zone available, put the window there and return
-            zonesToConsider[0].windowIds.add(win.get_id());
-            return;
         }
 
         // Second, find the nearest zone
-        let nearestZone = zonesToConsider.reduce((previousValue: ZoneWindows, currentValue: ZoneWindows) => {
+        let nearestZone = zonesToConsider.reduce((previousValue: Zone, currentValue: Zone) => {
                 let winRect = win.get_frame_rect();
                 let winMid = new XY(winRect.x + (winRect.width / 2), winRect.y + (winRect.height / 2));
-                let previousMid = new XY(previousValue.zone.x + (previousValue.zone.width / 2), previousValue.zone.y + (previousValue.zone.height / 2));
-                let currentMid = new XY(currentValue.zone.x + (currentValue.zone.width / 2), currentValue.zone.y + (currentValue.zone.height / 2));
+                let previousMid = new XY(previousValue.x + (previousValue.width / 2), previousValue.y + (previousValue.height / 2));
+                let currentMid = new XY(currentValue.x + (currentValue.width / 2), currentValue.y + (currentValue.height / 2));
                 let currentDistance = winMid.distance(currentMid);
                 let previousDistance = winMid.distance(previousMid);
                 return currentDistance > previousDistance ? currentValue : previousValue;
             },
             zonesToConsider[0]);
 
-        // Add to new zone
-        log(`Pushing ${win.get_wm_class()} (${win.get_id()}) to ${nearestZone.zone.innerRect.toString()}`);
-        nearestZone.windowIds.add(win.get_id());
+        // Add to the zone
+        log(`Pushing ${win.get_wm_class()} (${winId}) to ${nearestZone.innerRect.toString()}`);
+        this.zonesCleanup([winId]);
+        nearestZone.windowIds.add(winId);
+        this.applyLayout();
+    }
+    
+    private zonesCleanup(removedWindowIds: number[])
+    {
+        // Remove the window ids from any zone and virtual zones
+        for (const vz of this.zones.concat(this.virtualZones))
+            for(const wid of removedWindowIds)
+                vz.windowIds.delete(wid);
+
+        // Destroy and remove dead virtual zones  
+        for(const vz of this.virtualZones.filter(vz => vz.windowIds.size == 0)) {
+            vz.destroy();
+        }
+        
+        this.virtualZones = this.virtualZones.filter(vz => vz.windowIds.size > 0);
+    }
+
+    public moveWindowToZoneUnderCursor(win: Window) {
+        if (this.zones.length == 0) return;
+        
+        let winId = win.get_id();
+
+        let [x, y] = global.get_pointer();
+
+        let zonesTouchedByPointer = this.zones.filter(z => z.contains(x, y));
+        if (zonesTouchedByPointer.length == 1) {
+            let zone = this.zones.find(z => z.contains(x, y));
+            if (!zone) return;
+
+            this.zonesCleanup([winId]);
+            zone.windowIds.add(winId);
+        } else {
+            let virtualZoneRect = this.getTotalZoneRect(zonesTouchedByPointer);
+            let virtualZone = this.createZone(
+                virtualZoneRect.origin.x,
+                virtualZoneRect.origin.y,
+                virtualZoneRect.size.width,
+                virtualZoneRect.size.height,
+                this.margin);
+            
+            // The intention is to create a new virtual zone that contains
+            // every window found in it's area. We do this because we still want to use
+            // zone tabs in a useful manner.
+            let currentVirtualZoneWindows = this.windowsCurrentlyPresentInZone(virtualZone);
+            currentVirtualZoneWindows.push(win);
+            let virtualZoneWindowIds = currentVirtualZoneWindows.map(w => w.get_id());
+            virtualZone.windowIds = new Set<number>(virtualZoneWindowIds);
+            
+            // Since these windows are now part of a new virtual zone, remove them
+            // from the other zones
+            this.zonesCleanup(virtualZoneWindowIds);
+            this.virtualZones.push(virtualZone);
+            log(`Moved window to virtual zone {${virtualZone.toString()}`)
+        }
+
+        this.applyLayout();
+    }
+
+    public windowsCurrentlyPresentInZone(zone: Zone) : Window[] {
+        let currentWindows = getCurrentWindows();
+        let result = new Array<Window>();
+        for(const win of currentWindows) {
+            let outerRect = win.get_frame_rect();
+            let midX = outerRect.x + (outerRect.width / 2);
+            let midY = outerRect.y + (outerRect.height / 2);
+            if (zone.contains(midX, midY)) {
+                result.push(win);
+            }
+        }
+        return result;
+    }
+
+    // Returns the Rect describing the area made by the selected zones found on findX, findY
+    // null if findX, findY isn't contained in any zone.
+    private getTotalZoneRect(zones: ZoneBase[]): Rect {
+        log(`zones selected: ${zones.length}`);
+
+        // find smallest X,Y
+        let x = zones.reduce((p, c) => Math.min(p, c.x), zones[0].x);
+        let y = zones.reduce((p, c) => Math.min(p, c.y), zones[0].y);
+        let w: number;
+        let h: number;
+
+        if(zones.length == 2) {
+            let edgesA = zones[0].rect.edges();
+            let edgesB = zones[1].rect.edges();
+            let horiz = joinType(edgesA, edgesB) === JoinType.Horizontal;
+            if (horiz) {
+                w = zones.reduce((p, c) => p + c.width, 0);
+                h = zones[0].height;
+            } else {
+                w = zones[0].width;
+                h = zones.reduce((p, c) => p + c.height, 0);
+            }
+        } else {
+            // More than two zones, take the bigger area by summing up the widths and heights
+            w = zones.reduce((p, c) => p + c.width, 0);
+            h = zones.reduce((p, c) => p + c.height, 0);
+        }
+
+        let rect = new Rect(new XY(x, y), new Size(w, h));
+        log(rect.toString());
+        return rect;
     }
 
     public applyLayout() {
         if(this.zones.length === 0) return;
 
         let currentWindows = getCurrentWindows();
+        for (const zone of this.zones) {
+            zone.adjustWindows(currentWindows);
+        }
         
-        // Add new windows not previously known
-        let knownWindowIds = new Set<number>(this.zones.map(zw => Array.from(zw.windowIds)).flat());
-        let newWindows = currentWindows.filter(w => !knownWindowIds.has(w.get_id()));
-        newWindows.forEach(w => this.addWindow(w));
-            
-        for (const zw of this.zones) {
-            // Remove destroyed windows still lingering in the zone windowIds set
-            let currentZoneWindows = currentWindows.filter(w => zw.windowIds.has(w.get_id()));
-            zw.windowIds = new Set(currentZoneWindows.map(w => w.get_id()));
-
-            // Adjust windows inside the zone
-            zw.zone.adjustWindows(currentZoneWindows);
+        for(const vz of this.virtualZones) {
+            vz.adjustWindows(currentWindows);
         }
     };
 
@@ -718,16 +735,16 @@ export class ZoneDisplay {
     }
 
     public hide() {
-        this.zones.forEach(zw => zw.zone.hide());
+        this.zones.forEach(z => z.hide());
     }
 
     public show() {
-        this.zones.forEach(zw => zw.zone.show());
+        this.zones.forEach(z => z.show());
     }
 
     public destroy() {
         log('ZoneDisplay destroy');
-        this.zones.forEach(zw => zw.zone.destroy());
+        this.zones.forEach(z => z.destroy());
     }
 }
 
@@ -797,7 +814,6 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public show() {
-        this.init();
         super.show();
         this.isShowing = true;
         this.trackCursorUpdates();
