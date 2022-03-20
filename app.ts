@@ -273,6 +273,7 @@ class App {
         this.setToCurrentWorkspace();
         monitorsChangedConnect = Main.layoutManager.connect(
             'monitors-changed', () => {
+                log('Evt: monitors-changed');
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.applyLayout();
                 });
@@ -285,9 +286,8 @@ class App {
         }
 
         global.display.connect('window-created', (_display: Display, win: Window) => {
+            log('Evt: window-created');
             if(validWindow(win)) {
-                var monitor = win.get_monitor();
-                this.tabManager[monitor]?.addWindow(win);
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.applyLayout();
                 });
@@ -295,6 +295,7 @@ class App {
         });
         
         global.display.connect('in-fullscreen-changed', (_display: Display) => {
+            log('Evt: in-fullscreen-changed');
             if (global.display.get_monitor_in_fullscreen(0)) {
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.destroy();
@@ -306,6 +307,7 @@ class App {
         });
 
         global.display.connect('grab-op-begin', (_display: Display, win: Window) => {
+            log('Evt: grab-op-begin');
             if(validWindow(win)) {
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.show();
@@ -314,6 +316,7 @@ class App {
         });
 
         global.display.connect('grab-op-end', (_display: Display, win: Window) => {
+            log('Evt: grab-op-end');
             if(validWindow(win)) {
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.hide();
@@ -323,12 +326,15 @@ class App {
         });
 
         this.restackConnection = global.display.connect('restacked', () => {
+            log('Evt: restacked');
             activeMonitors().forEach(m => {
                 this.tabManager[m.index]?.applyLayout();
             });
         });
 
         this.workspaceSwitchedConnect = WorkspaceManager.connect('workspace-switched', () => {
+            log('Evt: workspace-switched');
+
             if(this.refreshLayouts()) {
                 this.saveLayouts();
             }
@@ -342,6 +348,7 @@ class App {
         });
 
         this.workareasChangedConnect = global.display.connect('workareas-changed', () => {
+            log('Evt: workareas-changed');
             activeMonitors().forEach(m => {
                 this.tabManager[m.index]?.reinit();
                 this.tabManager[m.index]?.applyLayout();

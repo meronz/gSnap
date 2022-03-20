@@ -2,22 +2,18 @@
   "workspaces": [
     [
       {
-        "current": 1
+        "current": 3
+      },
+      {
+        "current": 2
       }
     ],
     [
       {
-        "current": 1
-      }
-    ],
-    [
+        "current": 3
+      },
       {
-        "current": 1
-      }
-    ],
-    [
-      {
-        "current": 1
+        "current": 2
       }
     ]
   ],
@@ -27,43 +23,41 @@
       "items": [ ]
     },
     {
-      "name": "4 squares",
-      "items": [
-        { "widthPerc": 50, "heightPerc": 50},
-        { "widthPerc": 50, "heightPerc": 50},
-        { "widthPerc": 50, "heightPerc": 50},
-        { "widthPerc": 50, "heightPerc": 50}
-      ]
-    },
-    {
-      "name": "4 squares",
-      "items": [
-        { "widthPerc": 50, "heightPerc": 50},
-        { "widthPerc": 50, "heightPerc": 50},
-        { "widthPerc": 50, "heightPerc": 33},
-        { "widthPerc": 50, "heightPerc": 33},
-        { "widthPerc": 50, "heightPerc": 33}
-      ]
-    },
-    {
       "name": "1 Column",
       "items": [
-        { "widthPerc": 100, "heightPerc": 100}
+        { "widthPercentage": 100, "heightPercentage": 100}
       ]
     },
     {
       "name": "2 Column",
       "items": [
-        { "widthPerc": 50, "heightPerc": 100},
-        { "widthPerc": 50, "heightPerc": 100}
+        { "widthPercentage": 50, "heightPercentage": 100},
+        { "widthPercentage": 50, "heightPercentage": 100}
       ]
     },
     {
       "name": "3 Column",
       "items": [
-        { "widthPerc": 33, "heightPerc": 100},
-        { "widthPerc": 33, "heightPerc": 100},
-        { "widthPerc": 33, "heightPerc": 100}
+        { "widthPercentage": 33, "heightPercentage": 100},
+        { "widthPercentage": 33, "heightPercentage": 100},
+        { "widthPercentage": 33, "heightPercentage": 100}
+      ]
+    },
+    {
+      "name": "3 Column (Focused)",
+      "items": [
+        { "widthPercentage": 25, "heightPercentage": 100},
+        { "widthPercentage": 50, "heightPercentage": 100},
+        { "widthPercentage": 25, "heightPercentage": 100}
+      ]
+    },
+    {
+      "name": "4 quadrants",
+      "items": [
+        { "widthPercentage": 50, "heightPercentage": 50},
+        { "widthPercentage": 50, "heightPercentage": 50},
+        { "widthPercentage": 50, "heightPercentage": 50},
+        { "widthPercentage": 50, "heightPercentage": 50}
       ]
     }
   ]

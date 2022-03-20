@@ -89,7 +89,7 @@ export class XY {
     }
 
     toString() {
-        return 'XY(' + [this.x, this.y].join(', ') + ')';
+        return `${this.x}:${this.y}`;
     }
 
     dot(b: XY) {
@@ -188,10 +188,9 @@ export class Size {
     clone() {
         return new Size(this.width, this.height);
     }
-
-
+    
     toString() {
-        return [this.width, this.height].join('x')
+        return `${this.width}x${this.height}`;
     }
 
     area() {
@@ -215,7 +214,7 @@ export class Rect {
     }
 
     toString() {
-        return [this.origin, this.size].join(' ');
+        return `${this.origin} ${this.size}`;
     }
 
     equal(r: Rect, tol: number) {
