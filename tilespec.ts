@@ -133,6 +133,10 @@ export class XY {
     plus(b: XY) {
         return new XY(this.x + b.x, this.y + b.y)
     }
+
+    equals(b: XY) {
+        return this.x === b.x && this.y === b.y;
+    }
 }
 
 const ADJOIN_DOT_PRODUCT_TOL = .02;
@@ -150,6 +154,10 @@ export class LineSegment {
 
     adjoins(other: LineSegment, distTol: number) {
         return this.parallels(other) && this.lineDistance(other) < distTol
+    }
+
+    equals(other: LineSegment) {
+        return this.a.equals(other.a) && this.b.equals(other.b);
     }
 
     parallels(other: LineSegment) {
@@ -308,6 +316,13 @@ export class Rect {
     valid() {
         return this.size.width >= 0 && this.size.height >= 0
     }
+
+    contains(other: Rect) {
+        return this.origin.x >= other.origin.x &&
+            this.origin.y >= other.origin.y &&
+            this.size.width >= other.size.width &&
+            this.size.height >= other.size.height;
+    }
 }
 
 export enum Side {
@@ -345,20 +360,32 @@ export class Edges {
     }
 }
 
-export function adjoiningSides(a: Edges, b: Edges, distTol: number) {
-    const sides = [Side.Top, Side.Bottom, Side.Left, Side.Right];
+export enum JoinType {
+    Horizontal,
+    Vertical
+}
 
-    const result = [];
-    for (let sa of sides) {
-        for (let sb of sides) {
-            const sega = a.getSide(sa);
-            const segb = b.getSide(sb);
-            if (sega.adjoins(segb, distTol)) {
-                result.push([sa, sb]);
+export function joinType(a: Edges, b: Edges): JoinType | null {
+    const horizontal = [Side.Top, Side.Bottom];
+    const vertical = [Side.Left, Side.Right];
+
+    for (let orientation of [horizontal, vertical]) {
+        for (let i = 0; i < orientation.length; i++) {
+            const sideA = orientation[i];
+            const lineSegmentA = a.getSide(sideA);
+
+            for (let j = 0; j < orientation.length; j++) {
+                const sideB = orientation[j];
+                const lineSegmentB = b.getSide(sideB);
+                if (lineSegmentA.equals(lineSegmentB)) {
+                    return orientation === horizontal
+                        ? JoinType.Vertical
+                        : JoinType.Horizontal;
+                }
             }
         }
     }
-    return result;
+    return null;
 }
 
 /**
