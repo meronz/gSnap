@@ -16,20 +16,20 @@ import {
     WorkspaceManager as WorkspaceManagerInterface
 } from "./gnometypes";
 
-import { 
+import {
     activeMonitors,
     getCurrentMonitorIndex
 } from './monitors';
 
-import { 
-    deinitSettings, 
-    gridSettings, 
+import {
+    deinitSettings,
+    gridSettings,
     initSettings,
 } from './settings';
 
 import * as SETTINGS from './settings_data';
 
-import { Layout, LayoutsSettings, WorkspaceMonitorSettings } from './layouts';
+import {Layout, LayoutsSettings, WorkspaceMonitorSettings} from './layouts';
 
 /*****************************************************************
 
@@ -66,9 +66,7 @@ const SHELL_VERSION = ShellVersion.defaultVersion();
 
 // Hangouts workaround
 
-const keyBindings: Bindings = new Map([
-
-]);
+const keyBindings: Bindings = new Map([]);
 
 const key_bindings_presets: Bindings = new Map([
     [SETTINGS.PRESET_RESIZE_1, () => {
@@ -163,21 +161,86 @@ const key_bindings_presets: Bindings = new Map([
     }],
 ]);
 
-const keyBindingGlobalResizes: Bindings = new Map([
+const keyBindingGlobalResizes: Bindings = new Map([]);
 
-]);
+class AppWorkspace {
+    public managers: ZoneManager[][] = [];
+    public editors: ZoneEditor[] = [];
+    public previews: ZonePreview[] = [];
+    
+    public recreateManagers(tabsEnabled: boolean, margin: number, layoutsSettings: LayoutsSettings) {
+        this.getAllManagers()?.forEach(m => m.destroy());
+        
+        let nWorkspaces = WorkspaceManager.get_n_workspaces();
+        let nMonitors = activeMonitors().length;
+        log(`Initializing AppWorkspace for ${nWorkspaces} workspaces and ${nMonitors} monitors`);
+        this.managers = new Array<ZoneManager[]>(nWorkspaces);
+        for (let wI = 0; wI < nWorkspaces; wI++) {
+           let layouts = layoutsSettings.workspaces[wI].map(x => layoutsSettings.definitions[x.current]);
+           this.recreateWorkspaceManager(wI, tabsEnabled, margin, layouts);
+        }
+    }
+    
+    public recreateWorkspaceManager(workspaceIndex: number, tabsEnabled: boolean, margin: number, layouts: Layout[]) {
+        let nMonitors = activeMonitors().length;
+        this.managers[workspaceIndex]?.forEach(m => m.destroy());
+        this.managers[workspaceIndex] = new Array<ZoneManager>(nMonitors);
+
+        for (let mI = 0; mI < nMonitors; mI++) {
+            let activeMonitor = activeMonitors()[mI];
+            let layout = layouts[mI];
+
+            this.managers[workspaceIndex][mI] = tabsEnabled
+                ? new TabbedZoneManager(activeMonitor, layout, margin)
+                : new ZoneManager(activeMonitor, layout, margin);
+        }
+    };
+
+    public getManager(workspaceIndex: number, monitorIndex: number) {
+        return this.managers[workspaceIndex][monitorIndex];
+    }
+
+    public getAllManagers() {
+        return this.managers?.flat();
+    }
+
+    public currentWorkspaceManagers() {
+        let wI = WorkspaceManager.get_active_workspace().index();
+        return this.managers[wI];
+    }
+    
+    public getEditor(monitorIndex: number) {
+        return this.editors[monitorIndex];
+    }
+
+    public recreateEditors(layout: Layout[], margin: number) {
+        this.editors.forEach(e => e.destroy());
+        this.editors = new Array<ZoneEditor>(activeMonitors().length);
+        
+        for (const monitor of activeMonitors()) {
+            this.editors[monitor.index] = new ZoneEditor(monitor, layout[monitor.index], margin);
+        }
+    }
+
+    public recreatePreviews(layout: Layout[], margin: number) {
+        this.previews.forEach(e => e.destroy());
+        this.previews = new Array<ZonePreview>(activeMonitors().length);
+
+        for (const monitor of activeMonitors()) {
+            this.previews[monitor.index] = new ZonePreview(monitor, layout[monitor.index], margin);
+        }
+    }
+}
 
 class App {
-    private editor: (ZoneEditor | null)[];
-    private preview: (ZonePreview | null)[];
-    private tabManager: (ZoneManager | null)[];
+    private readonly appWorkspaces: AppWorkspace = new AppWorkspace();
 
     private currentLayout: Layout;
-    public layouts : LayoutsSettings = {
+    public layouts: LayoutsSettings = {
         // [workspaceindex][monitorindex]
         workspaces: [
-            [{ current: 0 }, { current: 0 }],
-            [{ current: 0 }, { current: 0 }]
+            [{current: 0}, {current: 0}],
+            [{current: 0}, {current: 0}]
         ],
         definitions: [
             {
@@ -191,61 +254,43 @@ class App {
     };
 
     constructor() {
-        const monitors = activeMonitors().length;
-        this.editor = new Array<ZoneEditor>(monitors);
-        this.preview = new Array<ZonePreview>(monitors);
-        this.tabManager = new Array<ZoneManager>(monitors);
         this.currentLayout = this.layouts.definitions[0];
     }
-    
+
     private restackConnection: any;
     private workspaceSwitchedConnect: any;
     private workareasChangedConnect: any;
 
-    setLayout(layoutIndex: number, monitorIndex = -1) {
+    setLayout(layoutIndex: number, monitorIndex = getCurrentMonitorIndex()) {
         if (this.layouts.definitions.length <= layoutIndex) {
             return;
         }
-        
+
         this.currentLayout = this.layouts.definitions[layoutIndex];
         if (this.layouts.workspaces == null) {
             this.layouts.workspaces = [];
         }
 
-        if(monitorIndex === -1 ) {
-            monitorIndex = getCurrentMonitorIndex();
-        }
+        let currentWorkspaceIdx = WorkspaceManager.get_active_workspace().index();
 
-        let workspaceIndex = WorkspaceManager.get_active_workspace().index();
-
-        this.layouts.workspaces[workspaceIndex][monitorIndex].current = layoutIndex;
+        this.layouts.workspaces[currentWorkspaceIdx][monitorIndex].current = layoutIndex;
         this.saveLayouts();
+
+        let layouts = this.layouts.workspaces[currentWorkspaceIdx].map(x => this.layouts.definitions[x.current]);
+        this.appWorkspaces.recreateWorkspaceManager(
+            currentWorkspaceIdx,
+            gridSettings[SETTINGS.SHOW_TABS],
+            gridSettings[SETTINGS.WINDOW_MARGIN],
+            layouts
+        );
+        this.appWorkspaces.getManager(currentWorkspaceIdx, monitorIndex).applyLayout();
         
-        this.tabManager[monitorIndex]?.destroy();
-        this.tabManager[monitorIndex] = null;
-
-        if (gridSettings[SETTINGS.SHOW_TABS]) {
-            this.tabManager[monitorIndex] = new TabbedZoneManager(activeMonitors()[monitorIndex], this.currentLayout, gridSettings[SETTINGS.WINDOW_MARGIN]);
-        } else {
-            this.tabManager[monitorIndex] = new ZoneManager(activeMonitors()[monitorIndex], this.currentLayout, gridSettings[SETTINGS.WINDOW_MARGIN]);
-        }
-       
-        this.tabManager[monitorIndex]?.applyLayout();
+        let monitorLayouts = this.layouts.workspaces[currentWorkspaceIdx]
+            .map( x => this.layouts.definitions[x.current]);
+        this.appWorkspaces.recreateEditors(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
+        this.appWorkspaces.recreatePreviews(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
+        
         this.reloadMenu();
-    }
-
-    showLayoutPreview(monitorIndex: number, layout: Layout) {
-        this.preview[monitorIndex]?.destroy();
-        this.preview[monitorIndex] = null;
-
-        this.preview[monitorIndex] = new ZonePreview(activeMonitors()[monitorIndex], layout, gridSettings[SETTINGS.WINDOW_MARGIN]);
-    }
-
-    hideLayoutPreview() {
-        activeMonitors().forEach(monitor => {
-            this.preview[monitor.index]?.destroy();
-            this.preview[monitor.index] = null;
-        });
     }
 
     enable() {
@@ -255,7 +300,7 @@ class App {
                 log("Loaded contents " + contents);
                 this.layouts = JSON.parse(contents);
                 log(JSON.stringify(this.layouts));
-                if(this.refreshLayouts()) {
+                if (this.refreshLayouts()) {
                     this.saveLayouts();
                 }
             }
@@ -269,16 +314,17 @@ class App {
             }
         }
 
+        let showTabs = gridSettings[SETTINGS.SHOW_TABS];
+        let margin = gridSettings[SETTINGS.WINDOW_MARGIN];
+        this.appWorkspaces.recreateManagers(showTabs, margin, this.layouts);
 
         this.setToCurrentWorkspace();
-        monitorsChangedConnect = Main.layoutManager.connect(
-            'monitors-changed', () => {
-                log('Evt: monitors-changed');
-                activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.applyLayout();
-                });
-                this.reloadMenu();
-            });
+
+        monitorsChangedConnect = Main.layoutManager.connect('monitors-changed', () => {
+            log('Evt: monitors-changed');
+            this.appWorkspaces.getAllManagers().forEach(m => m.applyLayout());
+            this.reloadMenu();
+        });
 
         function validWindow(window: Window): boolean {
             return window != null
@@ -287,19 +333,16 @@ class App {
 
         global.display.connect('window-created', (_display: Display, win: Window) => {
             log('Evt: window-created');
-            if(validWindow(win)) {
-                let monitor = win.get_monitor();
-                    this.tabManager[monitor]?.addWindow(win);
-            }
+            if (!validWindow(win)) return;
+
+            let monitor = win.get_monitor();
+            this.appWorkspaces.currentWorkspaceManagers()[monitor].addWindow(win);
         });
-        
+
         global.display.connect('in-fullscreen-changed', (_display: Display) => {
             log('Evt: in-fullscreen-changed');
             if (global.display.get_monitor_in_fullscreen(0)) {
-                activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.destroy();
-                    this.tabManager[m.index] = null;
-                });
+                this.appWorkspaces.currentWorkspaceManagers().forEach(m => m.destroy());
             } else {
                 this.setToCurrentWorkspace();
             }
@@ -307,50 +350,42 @@ class App {
 
         global.display.connect('grab-op-begin', (_display: Display, win: Window) => {
             log('Evt: grab-op-begin');
-            if(validWindow(win)) {
-                activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.show();
-                });
-            }
+            if (!validWindow(win)) return;
+
+            this.appWorkspaces.currentWorkspaceManagers().forEach(m => m.show());
         });
 
         global.display.connect('grab-op-end', (_display: Display, win: Window) => {
             log('Evt: grab-op-end');
-            if(validWindow(win)) {
-                activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.hide();
-                    this.tabManager[m.index]?.moveWindowToZoneUnderCursor(win);
-                });
-            }
+            if (!validWindow(win)) return;
+
+            this.appWorkspaces.currentWorkspaceManagers().forEach(m => {
+                m.hide();
+                m.moveWindowToZoneUnderCursor(win);
+            });
         });
 
         this.restackConnection = global.display.connect('restacked', () => {
             log('Evt: restacked');
-            activeMonitors().forEach(m => {
-                this.tabManager[m.index]?.applyLayout();
-            });
+            this.appWorkspaces.currentWorkspaceManagers().forEach(m => m.applyLayout());
         });
 
         this.workspaceSwitchedConnect = WorkspaceManager.connect('workspace-switched', () => {
             log('Evt: workspace-switched');
 
-            if(this.refreshLayouts()) {
+            if (this.refreshLayouts()) {
                 this.saveLayouts();
             }
 
-            activeMonitors().forEach(m => {
-                this.tabManager[m.index]?.destroy();
-                this.tabManager[m.index] = null;
-            });
-
+            this.appWorkspaces.getAllManagers().forEach(m => m.destroy());
             this.setToCurrentWorkspace();
         });
 
         this.workareasChangedConnect = global.display.connect('workareas-changed', () => {
             log('Evt: workareas-changed');
-            activeMonitors().forEach(m => {
-                this.tabManager[m.index]?.reinit();
-                this.tabManager[m.index]?.applyLayout();
+            this.appWorkspaces.getAllManagers().forEach(m => {
+                m.reinit();
+                m.applyLayout();
             });
         });
 
@@ -374,15 +409,15 @@ class App {
         log("Extension enable completed");
     }
 
-    refreshLayouts() : boolean {
+    refreshLayouts(): boolean {
         let changed = false;
-        
+
         // A workspace could have been added. Populate the layouts.workspace array
         let nWorkspaces = WorkspaceManager.get_n_workspaces();
         log(`refreshLayouts ${this.layouts.workspaces.length} ${nWorkspaces}`)
-        while(this.layouts.workspaces.length < nWorkspaces) {
+        while (this.layouts.workspaces.length < nWorkspaces) {
             let wk = new Array<WorkspaceMonitorSettings>(activeMonitors().length);
-            wk.fill({ current: 0 });
+            wk.fill({current: 0});
             this.layouts.workspaces.push(wk);
             changed = true;
         }
@@ -402,19 +437,18 @@ class App {
         let renameLayoutButton = new PopupMenu.PopupMenuItem(_("Rename: " + this.currentLayout.name));
 
         let currentMonitorIndex = getCurrentMonitorIndex();
-        if (this.editor[currentMonitorIndex] != null) {
+        if (this.appWorkspaces.getEditor(currentMonitorIndex).isEditing) {
             launcher.menu.addMenuItem(resetLayoutButton);
             launcher.menu.addMenuItem(saveLayoutButton);
             launcher.menu.addMenuItem(cancelEditingButton);
         } else {
             const monitorsCount = activeMonitors().length;
-            for(let mI = 0; mI < monitorsCount; mI++)
-            {
-                if(monitorsCount > 1) {
+            for (let mI = 0; mI < monitorsCount; mI++) {
+                if (monitorsCount > 1) {
                     let monitorName = new PopupMenu.PopupSubMenuMenuItem(_(`Monitor ${mI}`));
                     launcher.menu.addMenuItem(monitorName);
 
-                    this.createLayoutMenuItems(mI).forEach(i => 
+                    this.createLayoutMenuItems(mI).forEach(i =>
                         (<any>monitorName).menu.addMenuItem(i));
                 } else {
                     this.createLayoutMenuItems(mI).forEach(i =>
@@ -450,7 +484,7 @@ class App {
             dialog.onOkay = (text: string) => {
                 this.layouts.definitions.push({
                     name: text,
-                    items: [{ widthPercentage: 100, heightPercentage: 100}]
+                    items: [{widthPercentage: 100, heightPercentage: 100}]
                 });
                 this.setLayout(this.layouts.definitions.length - 1);
                 this.saveLayouts();
@@ -460,15 +494,16 @@ class App {
         });
 
         editLayoutButton.connect('activate', () => {
-            activeMonitors().forEach(m => {
-                this.editor[m.index]?.destroy();
-                this.editor[m.index] = new ZoneEditor(activeMonitors()[m.index], this.currentLayout, gridSettings[SETTINGS.WINDOW_MARGIN]);
-            });
+            let currentWorkspace = WorkspaceManager.get_active_workspace();
+            let monitorLayouts = this.layouts.workspaces[currentWorkspace.index()]
+                .map( x => this.layouts.definitions[x.current]);
+            
+            this.appWorkspaces.recreateEditors(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
 
-            var windows = WorkspaceManager.get_active_workspace().list_windows();
-            for (let i = 0; i < windows.length; i++) {
-                windows[i].minimize();
+            for (const window of currentWorkspace.list_windows()) {
+                window.minimize();
             }
+
             this.reloadMenu();
         });
 
@@ -479,26 +514,19 @@ class App {
         });
 
         resetLayoutButton.connect('activate', () => {
-            activeMonitors().forEach(m => {
-                let layout = {
-                    name: "Layout",
-                    items: [{ widthPercentage: 100, heightPercentage: 100}]
-                };
+            let layouts = activeMonitors().map(_ => ({
+                name: "Layout",
+                items: [{widthPercentage: 100, heightPercentage: 100}]
+            }) as Layout );
 
-                this.editor[m.index]?.destroy();
-                this.editor[m.index] = new ZoneEditor(m, layout, gridSettings[SETTINGS.WINDOW_MARGIN]);
-                this.editor[m.index]!.applyLayout();
-                this.reloadMenu();
-            });
+            this.appWorkspaces.recreateEditors(layouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
+            this.reloadMenu();
         });
 
         cancelEditingButton.connect('activate', () => {
-            activeMonitors().forEach(m => {
-                this.editor[m.index]?.destroy();
-                this.editor[m.index] = null;
-            });
+            this.appWorkspaces.editors.forEach(e => e.destroy());
 
-            var windows = WorkspaceManager.get_active_workspace().list_windows();
+            let windows = WorkspaceManager.get_active_workspace().list_windows();
             for (let i = 0; i < windows.length; i++) {
                 windows[i].unminimize();
             }
@@ -506,19 +534,21 @@ class App {
         });
     }
 
-    createLayoutMenuItems(monitorIndex: number) : Array<any> {
+    createLayoutMenuItems(monitorIndex: number): Array<any> {
         let items = [];
         for (let i = 0; i < this.layouts.definitions.length; i++) {
             let item = new PopupMenu.PopupMenuItem(_(this.layouts.definitions[i].name == null ? "Layout " + i : this.layouts.definitions[i].name));
             item.connect('activate', () => {
                 this.setLayout(i, monitorIndex);
-                this.hideLayoutPreview();
+                this.appWorkspaces.previews.forEach(p => p.destroy());
             });
             item.actor.connect('enter-event', () => {
-                this.showLayoutPreview(monitorIndex, this.layouts.definitions[i]);
+                let monitorLayouts = activeMonitors().map(_ => this.layouts.definitions[i]);
+                this.appWorkspaces.recreatePreviews(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
+                this.appWorkspaces.previews.forEach(p => p.show());
             });
             item.actor.connect('leave-event', () => {
-                this.hideLayoutPreview();
+                this.appWorkspaces.previews.forEach(p => p.destroy());
             });
             items.push(item);
         }
@@ -526,27 +556,26 @@ class App {
     }
 
     saveLayouts() {
-        activeMonitors().forEach(m => {
-            this.editor[m.index]?.apply();
-            this.editor[m.index]?.destroy();
-            this.editor[m.index] = null;
-        });
+        for (const editor of this.appWorkspaces.editors) {
+            editor.apply();
+            editor.destroy();
+        }
+
         GLib.file_set_contents(getCurrentPath()?.replace("/extension.js", "/layouts.json"), JSON.stringify(this.layouts));
         log(JSON.stringify(this.layouts));
 
-        var windows = WorkspaceManager.get_active_workspace().list_windows();
+        let windows = WorkspaceManager.get_active_workspace().list_windows();
         for (let i = 0; i < windows.length; i++) {
             windows[i].unminimize();
         }
-
     }
 
     disable() {
         log("Extension disable begin");
         enabled = false;
-        this.preview?.forEach(p => { p?.destroy(); p = null });
-        this.editor?.forEach(e => { e?.destroy(); e = null; });
-        this.tabManager?.forEach(t => { t?.destroy(); t = null });
+        this.appWorkspaces.previews.forEach(p => p.destroy());
+        this.appWorkspaces.editors.forEach(p => p.destroy());
+        this.appWorkspaces.getAllManagers().forEach(p => p.destroy());
 
         if (this.workspaceSwitchedConnect) {
             WorkspaceManager.disconnect(this.workspaceSwitchedConnect);
@@ -562,7 +591,7 @@ class App {
             monitorsChangedConnect = false;
         }
 
-        if(this.workareasChangedConnect) {
+        if (this.workareasChangedConnect) {
             global.display.disconnect(this.workareasChangedConnect);
             this.workareasChangedConnect = false;
         }
@@ -579,16 +608,24 @@ class App {
     /**
      * onFocus is called when the global focus changes.
      */
-    onFocus() { }
+    onFocus() {
+    }
 
-    showMenu() { }
+    showMenu() {
+    }
 
     private setToCurrentWorkspace() {
         let currentWorkspaceIdx = WorkspaceManager.get_active_workspace().index();
-        activeMonitors().forEach(m => {
-            let currentLayoutIdx = this.layouts.workspaces[currentWorkspaceIdx][m.index].current;
-            this.setLayout(currentLayoutIdx, m.index);
+        this.appWorkspaces.currentWorkspaceManagers().forEach((manager, index) =>
+        {
+            let currentLayoutIdx = this.layouts.workspaces[currentWorkspaceIdx][index].current;
+            this.setLayout(currentLayoutIdx, index);
         });
+        
+        let monitorLayouts = this.layouts.workspaces[currentWorkspaceIdx]
+            .map( x => this.layouts.definitions[x.current]);
+        this.appWorkspaces.recreateEditors(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
+        this.appWorkspaces.recreatePreviews(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
     }
 }
 
