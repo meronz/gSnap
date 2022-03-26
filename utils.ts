@@ -1,6 +1,6 @@
-export function getCurrentPath() : string | null {
+export function getCurrentPath(): string | null {
     let stack = new Error().stack?.split('\n');
-    if(!stack)
+    if (!stack)
         return null;
 
     let extensionStackLine;
@@ -33,12 +33,19 @@ export function getCurrentPath() : string | null {
     return path.split(":")[0];
 }
 
-Array.prototype.distinct = function ()
-{
+
+
+declare global {
+    interface Array<T> {
+        distinct(): Array<T>;
+        contains(search: T): boolean;
+    }
+}
+
+Array.prototype.distinct = function () {
     return this.filter((value, index, self) => self.indexOf(value) === index);
 }
 
-Array.prototype.contains = function (search : any)
-{
+Array.prototype.contains = function (search: any) {
     return this.indexOf(search) !== -1;
 }
