@@ -8,6 +8,7 @@ import {ClutterActor, StBoxLayout, StButton, StWidget, Window} from "./gnometype
 import {areEqual, getCurrentWindows, getWorkAreaByMonitor, Monitor, WorkArea} from './monitors';
 import {joinType, JoinType, Rect, Size, XY} from './tilespec';
 import {Layout, LayoutItem} from './layouts';
+import {ExtendedSet} from './utils';
 
 // Library imports
 const St = imports.gi.St;
@@ -168,7 +169,7 @@ export class ZoneBase {
 }
 
 export class Zone extends ZoneBase {
-    public windowIds: Set<number> = new Set<number>();
+    public windowIds: ExtendedSet<number> = new ExtendedSet<number>();
 
     public widget: StWidget | null;
     public index: number = 0;
@@ -747,7 +748,7 @@ export class ZoneManager extends ZoneDisplay {
             let currentVirtualZoneWindows = this.windowsCurrentlyPresentInZone(virtualZone);
             currentVirtualZoneWindows.push(win);
             let virtualZoneWindowIds = currentVirtualZoneWindows.map(w => w.get_id());
-            virtualZone.windowIds = new Set<number>(virtualZoneWindowIds);
+            virtualZone.windowIds = new ExtendedSet<number>(virtualZoneWindowIds);
 
             // Since these windows are now part of a new virtual zone, remove them
             // from the other zones
@@ -806,11 +807,17 @@ export class ZoneManager extends ZoneDisplay {
         if(this.zones.length === 0) return;
 
         let currentWindows = getCurrentWindows();
+        let currentWindowsIds = new Set(currentWindows.map(w => w.get_id()));
+
         for (const zone of this.zones) {
+            // remove non-existing windows
+            zone.windowIds = zone.windowIds.intersect(currentWindowsIds);
             zone.adjustWindows(currentWindows);
         }
 
         for(const vz of this.virtualZones) {
+            // remove non-existing windows
+            vz.windowIds = vz.windowIds.intersect(currentWindowsIds);
             vz.adjustWindows(currentWindows);
         }
     };

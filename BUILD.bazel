@@ -89,6 +89,7 @@ ts_library(
             ":logging_lib",
             ":settings_lib",
             ":shellversion_lib",
+            ":utils_lib",
             ":tilespec_lib",
             ":monitors_lib",
             ":layouts_lib",
