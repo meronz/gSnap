@@ -516,8 +516,8 @@ export class ZoneDisplay {
             let zone = this.createZone(
                 x,
                 y,
-                (this.workArea.width * layoutItem.widthPercentage / 100),
-                (this.workArea.height * layoutItem.heightPercentage / 100),
+                Math.trunc(this.workArea.width * layoutItem.widthPercentage / 100),
+                Math.trunc(this.workArea.height * layoutItem.heightPercentage / 100),
                 this.margin
             );
             zone.index = index;
