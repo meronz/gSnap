@@ -38,9 +38,9 @@
     {
       "name": "3 Column",
       "items": [
-        { "widthPercentage": 33, "heightPercentage": 100},
-        { "widthPercentage": 33, "heightPercentage": 100},
-        { "widthPercentage": 33, "heightPercentage": 100}
+        { "widthPercentage": 33.333, "heightPercentage": 100},
+        { "widthPercentage": 33.333, "heightPercentage": 100},
+        { "widthPercentage": 33.333, "heightPercentage": 100}
       ]
     },
     {
