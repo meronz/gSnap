@@ -316,13 +316,17 @@ export class ZoneTab {
         this.buttonWidget.connect('button-press-event', () => {
             Main.activateWindow(this.window);
         });
-        Main.uiGroup.insert_child_above(this.buttonWidget, global.window_group);
+        
+        // Tabs are positioned in the window group, just above the background, so to
+        // go under any window.
+        global.window_group.insert_child_above(this.buttonWidget, 
+            global.window_group.first_child);
     }
 
     destroy() {
         if(!this.buttonWidget) return;
         this.buttonWidget.visible = false;
-        Main.uiGroup.remove_child(this.buttonWidget);
+        global.window_group.remove_child(this.buttonWidget);
         this.buttonWidget = null;
     }
 }
