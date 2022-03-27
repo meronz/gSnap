@@ -32,20 +32,3 @@ export function getCurrentPath(): string | null {
     let path = match[1];
     return path.split(":")[0];
 }
-
-
-
-declare global {
-    interface Array<T> {
-        distinct(): Array<T>;
-        contains(search: T): boolean;
-    }
-}
-
-Array.prototype.distinct = function () {
-    return this.filter((value, index, self) => self.indexOf(value) === index);
-}
-
-Array.prototype.contains = function (search: any) {
-    return this.indexOf(search) !== -1;
-}
