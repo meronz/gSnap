@@ -332,7 +332,7 @@ class App {
         }
 
         global.display.connect('window-created', (_display: Display, win: Window) => {
-            log('Evt: window-created');
+            log(`Evt: window-created ${win.get_wm_class()} (${win.get_id()})`);
             if (!validWindow(win)) return;
 
             let monitor = win.get_monitor();

@@ -674,7 +674,8 @@ export class ZoneManager extends ZoneDisplay {
 
         if (zonesToConsider.length === 1) {
             // Only one free zone available, put the window there and return
-            zonesToConsider[0].adjustWindows(getCurrentWindows());
+            zonesToConsider[0].windowIds.add(winId);
+            this.applyLayout();
             return;
         }
 
@@ -691,12 +692,12 @@ export class ZoneManager extends ZoneDisplay {
                 let currentMid = new XY(currentValue.x + (currentValue.width / 2), currentValue.y + (currentValue.height / 2));
                 let currentDistance = winMid.distance(currentMid);
                 let previousDistance = winMid.distance(previousMid);
-                return currentDistance > previousDistance ? currentValue : previousValue;
+                return currentDistance < previousDistance ? currentValue : previousValue;
             },
             zonesToConsider[0]);
 
         // Add to the zone
-        log(`${this.toString()} Pushing ${win.get_wm_class()} (${winId}) to ${nearestZone.innerRect.toString()}`);
+        log(`${this.toString()} Pushing ${win.get_wm_class()} (${winId}) to ${nearestZone.toString()}`);
         this.zonesCleanup([winId]);
         nearestZone.windowIds.add(winId);
         this.applyLayout();
