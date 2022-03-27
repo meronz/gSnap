@@ -557,6 +557,12 @@ export class ZoneDisplay {
         log(`${this.toString()}::Destroy`);
         this.zones.forEach(z => z.destroy());
     }
+
+    public setLayout(layout: Layout) {
+        this.destroy();
+        this.layout = layout;
+        this.init();
+    }
 }
 
 export class ZoneEditor extends ZoneDisplay {
