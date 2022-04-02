@@ -185,12 +185,10 @@ class App {
         ],
         definitions: [
             {
-                type: 0,
                 name: "2 Column",
-                length: 100,
                 items: [
-                    {type:0, length: 50, items: []},
-                    {type:0, length: 50, items: []}
+                    {widthPerc: 50, heightPerc: 50},
+                    {widthPerc: 50, heightPerc: 50},
                 ]
             },
         ]
@@ -236,7 +234,7 @@ class App {
             this.tabManager[monitorIndex] = new ZoneManager(activeMonitors()[monitorIndex], this.currentLayout, gridSettings[SETTINGS.WINDOW_MARGIN]);
         }
        
-        this.tabManager[monitorIndex]?.layoutWindows();
+        this.tabManager[monitorIndex]?.applyLayout();
         this.reloadMenu();
     }
 
@@ -280,7 +278,7 @@ class App {
         monitorsChangedConnect = Main.layoutManager.connect(
             'monitors-changed', () => {
                 activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.layoutWindows();
+                    this.tabManager[m.index]?.applyLayout();
                 });
                 this.reloadMenu();
             });
@@ -293,7 +291,7 @@ class App {
         global.display.connect('window-created', (_display: Display, win: Window) => {
             if(validWindow(win)) {
                 activeMonitors().forEach(m => {
-                    this.tabManager[m.index]?.layoutWindows();
+                    this.tabManager[m.index]?.applyLayout();
                 });
             }
         });
@@ -307,7 +305,6 @@ class App {
             } else {
                 this.setToCurrentWorkspace();
             }
-            
         });
 
         global.display.connect('grab-op-begin', (_display: Display, win: Window) => {
@@ -316,21 +313,20 @@ class App {
                     this.tabManager[m.index]?.show();
                 });
             }
-
         });
 
         global.display.connect('grab-op-end', (_display: Display, win: Window) => {
             if(validWindow(win)) {
                 activeMonitors().forEach(m => {
                     this.tabManager[m.index]?.hide();
-                    this.tabManager[m.index]?.moveWindowToWidgetAtCursor(win);
+                    this.tabManager[m.index]?.moveWindowToZoneUnderCursor(win);
                 });
             }
         });
 
         this.restackConnection = global.display.connect('restacked', () => {
             activeMonitors().forEach(m => {
-                this.tabManager[m.index]?.layoutWindows();
+                this.tabManager[m.index]?.applyLayout();
             });
         });
 
@@ -350,7 +346,7 @@ class App {
         this.workareasChangedConnect = global.display.connect('workareas-changed', () => {
             activeMonitors().forEach(m => {
                 this.tabManager[m.index]?.reinit();
-                this.tabManager[m.index]?.layoutWindows();
+                this.tabManager[m.index]?.applyLayout();
             });
         });
 
@@ -450,15 +446,7 @@ class App {
             dialog.onOkay = (text: string) => {
                 this.layouts.definitions.push({
                     name: text,
-                    type: 0,
-                    length: 100,
-                    items: [
-                        {
-                            type: 0,
-                            length: 100,
-                            items: []
-                        }
-                    ]
+                    items: [{ widthPerc: 100, heightPerc: 100}]
                 });
                 this.setLayout(this.layouts.definitions.length - 1);
                 this.saveLayouts();
@@ -488,23 +476,15 @@ class App {
 
         resetLayoutButton.connect('activate', () => {
             activeMonitors().forEach(m => {
-                let editor = this.editor[m.index];
-                if (editor) {
-                    editor.destroy();
-                    editor.layoutItem = {
-                        type: 0,
-                        length: 100,
-                        items: [
-                            {
-                                type: 0,
-                                length: 100,
-                                items: [],
-                            }
-                        ]
-                    }
-                    editor.applyLayout(editor);
-                    this.reloadMenu();
-                }
+                let layout = {
+                    name: "Layout",
+                    items: [{ widthPerc: 100, heightPerc: 100}]
+                };
+
+                this.editor[m.index]?.destroy();
+                this.editor[m.index] = new ZoneEditor(m, layout, gridSettings[SETTINGS.WINDOW_MARGIN]);
+                this.editor[m.index]!.applyLayout();
+                this.reloadMenu();
             });
         });
 

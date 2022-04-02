@@ -15,7 +15,8 @@ import {
 
 import { areEqual, getWorkAreaByMonitor, getWindowsOfMonitor, Monitor, WorkArea } from './monitors';
 import { Rect, XY, Size } from './tilespec';
-import { LayoutItem } from './layouts';
+import { Layout, LayoutItem } from './layouts';
+import { WINDOW_MARGIN } from './settings_data';
 
 // Library imports
 const St = imports.gi.St;
@@ -29,26 +30,50 @@ const WorkspaceManager: WorkspaceManagerInterface = (global.screen || global.wor
 // TODO: expose as setting
 const HIGHLIGHT_MARGIN = 16;
 
-export class ZoneBase {
-    private _x: number = 0;
-    private _y: number = 0;
-    private _width: number = 0;
-    private _height: number = 0;
-    public parent: ZoneGroup | null = null;
-    public margin: number = 0;
-    public layoutItem: LayoutItem;
 
-    constructor(layoutItem: LayoutItem, parent: ZoneGroup | null) {
-        this.layoutItem = layoutItem;
-        this.parent = parent;
-    }
+function moveWindowToRect(win: Window, rect: Rect) {
+    log(`Moving window ${win.get_wm_class()} to ${rect.toString()}`);
+    win.move_frame(true, rect.origin.x, rect.origin.y);
+    win.move_resize_frame(
+        true,
+        rect.origin.x,
+        rect.origin.y,
+        rect.size.width,
+        rect.size.height);
+}
+
+export class ZoneBase {
+    public margin: number = 0;
+
+    constructor(
+        private _x: number = 0,
+        private _y: number = 0,
+        private _width: number = 0,
+        private _height: number = 0) { }
 
     public contains(x: number, y: number, width: number = 1, height: number = 1): boolean {
+        
+        log(`x: ${x}`);
+        log(`y: ${y}`);
+        log(`this.x: ${this.x}`);
+        log(`this.y: ${this.y}`);
+        log(`this.totalWidth: ${this.totalWidth}`);
+        log(`this.totalHeight: ${this.totalHeight}`);
+        log(`${Math.max(0, this.x - HIGHLIGHT_MARGIN)}`);
+        log(`${Math.max(0, this.y - HIGHLIGHT_MARGIN)}`);
+        log("---")
         return (
             Math.max(0, this.x - HIGHLIGHT_MARGIN) <= x &&
             Math.max(0, this.y - HIGHLIGHT_MARGIN) <= y &&
             this.x + this.totalWidth + HIGHLIGHT_MARGIN >= x + width &&
             this.y + this.totalHeight + HIGHLIGHT_MARGIN >= y + height
+        );
+    }
+
+    public get innerRect(): Rect {
+        return new Rect(
+            new XY(this.innerX, this.innerY),
+            new Size(this.innerWidth, this.innerHeight)
         );
     }
 
@@ -76,76 +101,48 @@ export class ZoneBase {
         return this.height - (this.margin * 2);
     }
 
-    public get x() : number {
+    public get x(): number {
         return this._x;
     }
 
-    public set x(v : number) {
-        if(this._x !== v) {
+    public set x(v: number) {
+        if (this._x !== v) {
             this._x = v;
             this.positionChanged();
         }
     }
 
-    public get y() : number {
+    public get y(): number {
         return this._y;
     }
-    
-    public set y(v : number) {
-        if(this._y !== v) {
-        this._y = v;
-        this.positionChanged();
+
+    public set y(v: number) {
+        if (this._y !== v) {
+            this._y = v;
+            this.positionChanged();
         }
     }
 
-    public get width() : number {
+    public get width(): number {
         return this._width;
     }
 
-    public set width(v : number) {
-        if(this._width !== v) {
-        this._width = v;
-        this.sizeChanged();
+    public set width(v: number) {
+        if (this._width !== v) {
+            this._width = v;
+            this.sizeChanged();
         }
     }
 
-    public get height() : number {
+    public get height(): number {
         return this._height;
     }
 
-    public set height(v : number) {
-        if(this._height !== v) {
-        this._height = v;
-        this.sizeChanged();
+    public set height(v: number) {
+        if (this._height !== v) {
+            this._height = v;
+            this.sizeChanged();
         }
-    }
-
-    public applyPercentages() {
-        if (this.parent) {
-            if (this.parent.layoutItem.type == 0) {
-                let factor = this.parent.width / this.width;
-                this.layoutItem.length = 100 / factor;
-            } else {
-                let factor = this.parent.height / this.height;
-                this.layoutItem.length = 100 / factor;
-            }
-        }
-    }
-
-    public destroy() {
-
-    }
-
-    public hide() {
-
-    }
-
-    public show() {
-
-    }
-
-    public hover(hovering: boolean) { 
-
     }
 
     public positionChanged() {
@@ -173,23 +170,17 @@ export class ZoneBase {
     sizeBottom(delta: number) {
         this.height += delta;
     }
-
-    public adjustWindows(windows: Window[]) {
-
-    }
 }
 
 export class Zone extends ZoneBase {
-    public widget!: StWidget;
+    public widget: StWidget;
+    styleClass: string = 'grid-preview'
 
-    constructor(layoutItem: LayoutItem, parent: ZoneGroup | null) {
-        super(layoutItem, parent);
-        this.createWidget();
+    constructor(x: number = 0, y: number = 0, width: number = 0, height: number = 0) {
+        super(x, y, width, height);
+        this.widget = new St.BoxLayout({ style_class: this.styleClass });
+        this.widget.visible = false;
         Main.uiGroup.insert_child_above(this.widget, global.window_group);
-    }
-
-    public createWidget(styleClass: string = 'grid-preview') {
-        this.widget = new St.BoxLayout({ style_class: styleClass });
     }
 
     positionChanged() {
@@ -214,13 +205,16 @@ export class Zone extends ZoneBase {
         this.widget.add_style_pseudo_class('activate');
     }
 
-    public hover(hovering: boolean)
-    {
+    public hover(hovering: boolean) {
         // this is needed to highlight windows on hover
         // while dragging a window in the zone
         hovering
-            ? this.widget?.add_style_pseudo_class('hover')
-            : this.widget?.remove_style_pseudo_class('hover');
+            ? this.widget.add_style_pseudo_class('hover')
+            : this.widget.remove_style_pseudo_class('hover');
+    }
+
+    public adjustWindows(windows: Window[]) {
+        windows.forEach(w => moveWindowToRect(w, this.innerRect));
     }
 
     public destroy() {
@@ -277,7 +271,7 @@ export class TabbedZone extends Zone {
 
             let midX = outerRect.x + (outerRect.width / 2);
             let midY = outerRect.y + (outerRect.height / 2);
-            
+
             if (this.contains(midX, midY)) {
                 let zoneTab = new ZoneTab(this, metaWindow);
                 zoneTab.buttonWidget.height = this.tabHeight - (this.margin * 2);
@@ -334,14 +328,22 @@ export class ZoneTab {
 }
 
 export class EditableZone extends Zone {
+    private layoutItem: LayoutItem;
+
+    constructor(layoutItem: LayoutItem) {
+        // todo
+        super();
+        this.layoutItem = layoutItem;
+    }
+
     positionChanged() {
         super.positionChanged();
-        this.widget.label = this.layoutItem.length + "%";
+        this.widget.label = `${this.layoutItem.widthPerc}% x ${this.layoutItem.heightPerc}%`;
     }
 
     sizeChanged() {
         super.sizeChanged();
-        this.widget.label = this.layoutItem.length + "%";
+        this.widget.label = `${this.layoutItem.widthPerc}% x ${this.layoutItem.heightPerc}%`;
     }
 
     createWidget(styleClass: string = 'grid-preview') {
@@ -350,221 +352,38 @@ export class EditableZone extends Zone {
             var btn = event.get_button();
             if (btn == 1) {
                 log("Splitting");
-                this.parent?.split(this);
+                //this.parent?.split(this);
             }
 
             if (btn == 2) {
-                this.parent?.splitOtherDirection(this);
+                //this.parent?.splitOtherDirection(this);
             }
 
             if (btn == 3) {
-                this.parent?.remove(this);
+                //this.parent?.remove(this);
             }
         });
         this.widget;
     }
 }
 
-export class ZoneGroup extends ZoneBase {
-    public children: ZoneBase[] = [];
-    public root!: ZoneDisplay;
-
-    constructor(layoutItem: LayoutItem, parent: ZoneGroup | null) {
-        super(layoutItem, parent);
-    }
-
-    contains(x: number, y: number, width: number = 1, height: number = 1): boolean {
-        return false;
-    }
-
-    adjustWindows(windows: Window[]) {
-        super.adjustWindows(windows);
-        for (var i = 0; i < this.children.length; i++) {
-            this.children[i].adjustWindows(windows);
-        }
-    }
-
-    public remove(zone: Zone) {
-        const index = this.layoutItem.items.indexOf(zone.layoutItem);
-        if (index > -1) {
-            if (index + 1 < this.layoutItem.items.length) {
-                this.layoutItem.items[index + 1].length += zone.layoutItem.length;
-                this.layoutItem.items.splice(index, 1);
-            } else if (index - 1 > -1) {
-                this.layoutItem.items[index - 1].length += zone.layoutItem.length;
-                this.layoutItem.items.splice(index, 1);
-            }
-
-            if (this.layoutItem.items.length < 2) {
-                if (this.layoutItem != this.root.layoutItem) {
-                    this.layoutItem.items = [];
-                }
-            }
-        }
-        this.root.reinit();
-    }
-
-    public splitOtherDirection(zone: Zone) {
-        zone.layoutItem.items = [];
-
-        zone.layoutItem.type = this.layoutItem.type == 1 ? 0 : 1;
-        zone.layoutItem.items.push({ type: 0, length: 50, items: [] });
-        zone.layoutItem.items.push({ type: 0, length: 50, items: [] });
-        log(JSON.stringify(this.root.layoutItem));
-        this.root.reinit();
-    }
-
-    public split(zone: Zone) {
-        let index = this.children.indexOf(zone);
-
-        this.layoutItem.items.splice(index, 0, {
-            type: 0,
-            length: zone.layoutItem.length / 2,
-            items: []
-        });
-        zone.layoutItem.length = zone.layoutItem.length / 2;
-        log(JSON.stringify(this.root.layoutItem));
-        this.root.reinit();
-    }
-
-    public adjustLayout(root: ZoneDisplay) {
-        this.root = root;
-        let x = this.x;
-        let y = this.y;
-
-        for (let i = 0; i < this.children.length; i++) {
-            let child = this.children[i];
-            let item = child.layoutItem;
-            let factor = this.layoutItem.type == 0 ? this.width : this.height;
-            let length = (factor / 100) * item.length;
-
-            let w = 0;
-            let h = 0;
-            if (this.layoutItem.type == 0) {
-                w = length;
-                h = this.height;
-            } else {
-                h = length;
-                w = this.width;
-            }
-            if (child instanceof ZoneGroup) {
-                child.layoutItem = item;
-                child.x = x;
-                child.y = y;
-                child.width = w;
-                child.height = h;
-                (<ZoneGroup>child).adjustLayout(root);
-            } else {
-                child.x = x;
-                child.y = y;
-                child.width = w;
-                child.height = h;
-            }
-
-            if (this.layoutItem.type == 0) {
-                x += length;
-            } else {
-                y += length;
-            }
-        }
-
-
-    }
-
-    public applyLayout(root: ZoneDisplay) {
-        this.destroy();
-        this.root = root;
-        this.children = [];
-        for (let i = 0; i < this.layoutItem.items.length; i++) {
-            let item = this.layoutItem.items[i];
-            if (item.items && item.items.length > 0) {
-                let z = new ZoneGroup(item, this);
-                this.children.push(z);
-                z.applyLayout(root);
-            } else {
-                let zone = root.createZone(item, this);
-                zone.margin = root.margin;
-                this.children.push(zone);
-                root.zoneCreated(zone);
-            }
-        }
-        root.zoneGroupCreated(this);
-    }
-
-    protected zoneGroupCreated(z: ZoneGroup) {
-
-    }
-
-    protected zoneCreated(zone: Zone) {
-
-    }
-
-    public destroy() {
-
-        super.destroy();
-        this.hide();
-        for (let i = 0; i < this.children.length; i++) {
-            this.children[i].destroy();
-        }
-        this.children = [];
-    }
-
-    public sizeLeft(delta: number) {
-        super.sizeLeft(delta);
-        this.adjustLayout(this.root);
-    }
-
-    public sizeRight(delta: number) {
-        super.sizeRight(delta);
-        this.adjustLayout(this.root);
-    }
-
-    public sizeTop(delta: number) {
-        super.sizeTop(delta);
-        this.adjustLayout(this.root);
-    }
-
-    public sizeBottom(delta: number) {
-        super.sizeBottom(delta);
-        this.adjustLayout(this.root);
-    }
-
-    public hide() {
-        super.destroy();
-        for (let i = 0; i < this.children.length; i++) {
-            this.children[i].hide();
-        }
-    }
-
-    public show() {
-        super.destroy();
-        for (let i = 0; i < this.children.length; i++) {
-            this.children[i].show();
-        }
-    }
-
-    public recursiveChildren(list: any[] = []): ZoneBase[] {
-        for (let i = 0; i < this.children.length; i++) {
-            let item = this.children[i];
-
-            if (item instanceof ZoneGroup) {
-                item.recursiveChildren(list);
-            }
-            list.push(item);
-        }
-        return list;
-    }
-}
+export enum ZoneAnchorType {
+    Vertical,
+    Horizontal,
+};
 
 export class ZoneAnchor {
-
     private widget: StButton;
     public startX = 0;
     public startY = 0;
     public isMoving: boolean = false;
     public motionConnection = null;
 
-    constructor(protected zoneGroup: ZoneGroup, protected zoneA: ZoneBase, protected zoneB: ZoneBase, protected margin: number) {
+    constructor(
+        protected zoneA: ZoneBase,
+        protected zoneB: ZoneBase,
+        protected type: ZoneAnchorType,
+        protected margin: number) {
         this.widget = new St.Button({ style_class: 'size-button' });
         this.widget.label = " = ";
         this.widget.visible = true;
@@ -574,16 +393,9 @@ export class ZoneAnchor {
             this.startX = x;
             this.startY = y;
             this.isMoving = !this.isMoving;
-            let a = this.zoneA instanceof ZoneGroup ? "zg" : "z";
-            let b = this.zoneB instanceof ZoneGroup ? "zg" : "z";
-            if (!this.isMoving) {
-
-            }
-            log("sizing " + a + ", " + b);
         });
         this.widget.connect('button-release-event', () => {
             //this.isMoving = false;
-
         });
 
         //this.widgets.push(sizeButton);
@@ -591,19 +403,16 @@ export class ZoneAnchor {
     }
 
     public adjustSizes() {
-        if (this.zoneGroup.layoutItem.type == 0) {
+        if (this.type == ZoneAnchorType.Horizontal) {
             this.widget.x = this.zoneA.x + this.zoneA.width - this.margin;
             this.widget.y = this.zoneA.y + this.margin;
             this.widget.width = this.margin * 2;
             this.widget.height = this.zoneA.height - (this.margin * 2);
-
-
         } else {
             this.widget.y = this.zoneA.y + this.zoneA.height - this.margin;
             this.widget.x = this.zoneA.x + this.margin;
             this.widget.height = this.margin * 2;
             this.widget.width = this.zoneA.width - (this.margin * 2);
-
         }
     }
 
@@ -652,7 +461,7 @@ export class ZoneAnchor {
 
     mouseMoved(x: number, y: number) {
         if (this.isMoving) {
-            if (this.zoneGroup.layoutItem.type == 0) {
+            if (this.type == ZoneAnchorType.Horizontal) {
                 let delta = x - this.startX;
                 this.zoneA.sizeRight(delta);
                 this.zoneB.sizeLeft(delta);
@@ -667,61 +476,100 @@ export class ZoneAnchor {
     }
 }
 
-export class ZoneDisplay extends ZoneGroup {
+interface ZoneWindows {
+    zone: Zone;
+    windows: Window[];
+};
+
+export class ZoneDisplay {
+    protected layout: Layout;
+    protected margin: number;
     protected motionConnection: any;
     protected workArea: WorkArea | null;
     protected monitor: Monitor;
+    protected effectiveZones: Array<ZoneWindows> = new Array<ZoneWindows>();
 
     public apply() {
-        var c = this.recursiveChildren();
-        for (var i = 0; i < c.length; i++) {
-            c[i].applyPercentages();
-        }
+        // var c = this.recursiveChildren();
+        // for (var i = 0; i < c.length; i++) {
+        //     c[i].applyPercentages();
+        // }
     }
 
-    constructor(monitor: Monitor, layout: LayoutItem, margin: number) {
-        super(layout, null);
+    constructor(monitor: Monitor, layout: Layout, margin: number) {
         this.monitor = monitor;
+        this.layout = layout;
         this.margin = margin;
 
         this.workArea = getWorkAreaByMonitor(this.monitor);
+
         this.init();
     }
 
+    public moveWindowToZoneUnderCursor(win: Window) {
+        let [x, y] = global.get_pointer();
+        
+        log(JSON.stringify(this.effectiveZones.map(zq => zq.zone.innerRect.toString())));
+        let newZoneIdx = this.effectiveZones.findIndex(zw => zw.zone.contains(x, y));
+        if(newZoneIdx === -1) {
+            log("AHIAHIA");
+            return;
+        }
+        
+        // remove from old zone
+        this.effectiveZones.forEach(zw => {
+            const { windows } = zw;
+            let idx = windows.findIndex(w => w === win);
+            if(idx !== -1) windows.splice(idx, 1);
+        });
 
-    public destroy() {
-        super.destroy();
+        // add to new zone
+        this.effectiveZones[newZoneIdx].windows.push(win);
 
+        this.applyLayout();
     }
 
-    public moveWindowToWidgetAtCursor(win: Window) {
-        let [x, y] = global.get_pointer();
-        let c = this.recursiveChildren();
-        for (let i = 0; i < c.length; i++) {
-            c[i].hide();
-            if (c[i].contains(x, y)) {
-                win.move_frame(true, c[i].innerX, c[i].innerY);
-                win.move_resize_frame(true, c[i].innerX, c[i].innerY, c[i].innerWidth, c[i].innerHeight);
-            }
-        }
+    // Returns the Rect describing the area made by the selected zones found on findX, findY
+    // null if findX, findY isn't contained in any zone.
+    private getTotalZoneRect(findX: number, findY: number): Rect | null {
+        let zones = this.effectiveZones.map(zw => zw.zone)
+            .filter(c => c.contains(findX, findY));
+
+        log(`getTotalZone ${zones.length}`);
+        if (zones.length == 0)
+            return null;
+
+        log(`zones selected: ${zones.length}`);
+
+        let firstZone = zones[0];
+        log(`x: ${firstZone.innerX}, y: ${firstZone.innerY}`);
+
+        let lastZone = zones[zones.length - 1];
+        let width = lastZone.innerX + lastZone.innerWidth - firstZone.innerX;
+        let height = lastZone.innerY + lastZone.innerHeight - firstZone.innerY;
+        log(`width: ${width}, height: ${height}`);
+
+        return new Rect(
+            new XY(firstZone.innerX, firstZone.innerY),
+            new Size(width, height)
+        );
     }
 
-    public highlightZonesAtCursor()
-    {
+    public highlightZonesAtCursor() {
         let [x, y] = global.get_pointer();
-        let c = this.recursiveChildren();
-        for (let i = 0; i < c.length; i++) {
-            let contained = c[i].contains(x, y);
-            c[i].hover(contained);
-        }
+        this.effectiveZones.forEach(zw => {
+            const { zone } = zw;
+            let contained = zone.contains(x, y);
+            zone.hover(contained);
+        });
     }
 
     protected createMarginItem() {
 
     }
 
-    public createZoneWidget() {
-
+    public createZone(x: number = 0, y: number = 0, width: number = 0, height: number = 0): Zone {
+        return new Zone(x, y, width, height);
     }
 
     public init() {
@@ -730,19 +578,58 @@ export class ZoneDisplay extends ZoneGroup {
             return;
         }
 
-        this.x = this.margin + this.workArea.x;
-        this.y = this.margin + this.workArea.y;
+        this.effectiveZones = [];
 
-        this.width = this.workArea.width - (this.margin * 2);
-        this.height = this.workArea.height - (this.margin * 2);
-        this.applyLayout(this);
-        this.adjustLayout(this);
+        let x = this.workArea.x + this.margin;
+        let y = this.workArea.y + this.margin;
+
+        log(`ZoneDisplay Init: ${JSON.stringify(this.layout)}`);
+        for (let index = 0; index < this.layout.items.length; index++) {
+            const layoutItem = this.layout.items[index];
+
+            // Create a new zone, starting
+            let zone = this.createZone(
+                x,
+                y,
+                (this.workArea.width * layoutItem.widthPerc / 100) - this.margin,
+                (this.workArea.height * layoutItem.heightPerc / 100) - this.margin
+            );
+            this.effectiveZones.push({ zone, windows: []});
+            log(`Zone: ${index}: ${zone.innerRect.toString()}`);
+
+            // advance the origin for the next zone
+            x += zone.width + (this.margin * 2);
+            y += 0;
+        }
+        log(`Effective zones ${this.effectiveZones.length}`);
+
+        let monitorWindows = getWindowsOfMonitor(this.monitor);
+        log(`Layout windows start ${monitorWindows.length}`);
+        this.effectiveZones.forEach(zw => {
+            const { zone, windows } = zw;
+            monitorWindows.forEach(win => {
+                let outerRect = win.get_frame_rect();
+                let midX = outerRect.x + (outerRect.width / 2);
+                let midY = outerRect.y + (outerRect.height / 2);
+
+                log(`${win.get_wm_class()}: ${midX}:${midY}`);
+                if (zone.contains(midX, midY)) {
+                    log(`Pushing ${win.get_wm_class()} to ${zone.innerRect.toString()}`);
+                    windows.push(win);
+                }
+            });
+        });
+
+        log('Layout windows end');
     }
 
+    public applyLayout() {
+        this.effectiveZones.forEach(zw => {
+            const { zone, windows } = zw;
+            zone.adjustWindows(windows);
+        });
+    };
 
-    public createZone(layout: LayoutItem, parent: ZoneGroup) {
-        return new Zone(layout, parent);
-    }
 
     public reinit() {
         let wa = getWorkAreaByMonitor(this.monitor);
@@ -755,10 +642,25 @@ export class ZoneDisplay extends ZoneGroup {
             this.workArea = wa;
             this.init();
         } else {
-            this.applyLayout(this);
-            this.adjustLayout(this);
+            this.applyLayout();
         }
     }
+
+    public hide() {
+        this.effectiveZones.forEach(zw => {
+            const { zone } = zw;
+            zone.hide();
+        });
+    }
+
+    public show() {
+        this.effectiveZones.forEach(zw => {
+            const { zone } = zw;
+            zone.show();
+        });
+    }
+
+    public destroy() { }
 }
 
 export class ZoneEditor extends ZoneDisplay {
@@ -768,11 +670,7 @@ export class ZoneEditor extends ZoneDisplay {
     public isMoving: boolean = false;
 
 
-    public createZone(layout: LayoutItem, parent: ZoneGroup) {
-        return new EditableZone(layout, parent);
-    }
-
-    constructor(monitor: Monitor, layout: LayoutItem, margin: number) {
+    constructor(monitor: Monitor, layout: Layout, margin: number) {
         super(monitor, layout, margin);
         this.anchors = [];
     }
@@ -802,38 +700,6 @@ export class ZoneEditor extends ZoneDisplay {
             this.anchors[i].destroy();
         }
         this.anchors = [];
-        super.destroy();
-    }
-
-
-    protected zoneCreated(zone: Zone) {
-        super.zoneCreated(zone);
-    }
-
-    protected zoneGroupCreated(z: ZoneGroup) {
-        super.zoneGroupCreated(z);
-        //
-        if (this.anchors == null) {
-            this.anchors = [];
-        }
-        for (let i = 1; i < z.children.length; i++) {
-            let before = z.children[i - 1];
-            let after = z.children[i];
-            if (before == null) {
-                log("--- --- BEFORE IS NULL --- ---" + i);
-                log(JSON.stringify(z.children));
-            }
-            if (after == null) {
-                log("--- --- AFTER IS NULL --- ---" + i);
-                log(JSON.stringify(z.children));
-            }
-            let zoneAnchor = new ZoneAnchor(z, before, after, this.margin);
-            this.anchors.push(zoneAnchor);
-        }
-    }
-
-    applyLayout(root: ZoneDisplay) {
-        super.applyLayout(root);
     }
 
     public hide() {
@@ -845,7 +711,6 @@ export class ZoneEditor extends ZoneDisplay {
 
     public show() {
         super.show();
-
         for (let i = 0; i < this.anchors.length; i++) {
             this.anchors[i].show();
         }
@@ -853,7 +718,7 @@ export class ZoneEditor extends ZoneDisplay {
 }
 
 export class ZonePreview extends ZoneDisplay {
-    constructor(monitor: Monitor, layout: LayoutItem, margin: number) {
+    constructor(monitor: Monitor, layout: Layout, margin: number) {
         super(monitor, layout, margin);
     }
 }
@@ -861,87 +726,8 @@ export class ZonePreview extends ZoneDisplay {
 export class ZoneManager extends ZoneDisplay {
     private isShowing: boolean = false;
 
-    constructor(monitor: Monitor, layout: LayoutItem, margin: number) {
+    constructor(monitor: Monitor, layout: Layout, margin: number) {
         super(monitor, layout, margin);
-    }
-
-    adjustLayout(root: ZoneDisplay) {
-        super.adjustLayout(root);
-        this.layoutWindows();
-    }
-
-    public layoutWindows() {
-        let windows = WorkspaceManager
-            .get_active_workspace()
-            .list_windows()
-            .filter(w => w.get_window_type() == WindowType.NORMAL);
-
-        log(`Layout windows start ${windows.length}`);
-        windows.forEach(win => {
-            let outerRect = win.get_frame_rect();
-            let midX = outerRect.x + (outerRect.width / 2);
-            let midY = outerRect.y + (outerRect.height / 2);
-
-            let rect = this.getTotalZoneRect(midX, midY);
-            if(!rect)
-                return;
-
-            log(`Moving window ${win.get_wm_class()} to ${rect.toString()}`);
-            win.move_frame(true, rect.origin.x, rect.origin.y);
-            win.move_resize_frame(
-                true,
-                rect.origin.x,
-                rect.origin.y,
-                rect.size.width,
-                rect.size.height);
-        });
-
-        log('Layout windows end')
-    }
-
-    // Returns the Rect describing the area made by the selected zones found on findX, findY
-    // null if findX, findY isn't contained in any zone.
-    private getTotalZoneRect(findX: number, findY: number): Rect | null
-    {
-        let children = this.recursiveChildren();
-        let zones = children.filter(c => c.contains(findX, findY));
-        log(`getTotalZone ${zones.length}`);
-        if(zones.length == 0)
-            return null;
-
-        log(`zones selected: ${zones.length}`);
-        
-        let firstZone = zones[0];
-        log(`x: ${firstZone.innerX}, y: ${firstZone.innerY}`);
-        
-        let lastZone = zones[zones.length-1];
-        let width = lastZone.innerX + lastZone.innerWidth - firstZone.innerX;
-        let height = lastZone.innerY + lastZone.innerHeight - firstZone.innerY;
-        log(`width: ${width}, height: ${height}`);
-
-        return new Rect(
-            new XY(firstZone.innerX, firstZone.innerY),
-            new Size(width, height)
-        );
-    }
-
-    public moveWindowToWidgetAtCursor(win: Window) {
-        let [x, y] = global.get_pointer();
-        let c = this.recursiveChildren();
-        for (let i = 0; i < c.length; i++) {
-            c[i].hide();
-            let rect = this.getTotalZoneRect(x,y);
-            if (rect) {
-                log(`Moving window ${win.get_wm_class()} to ${rect.toString()}`);
-                win.move_frame(true, rect.origin.x, rect.origin.y);
-                win.move_resize_frame(
-                    true,
-                    rect.origin.x,
-                    rect.origin.y,
-                    rect.size.width,
-                    rect.size.height);
-            }
-        }
     }
 
     public show() {
@@ -957,7 +743,7 @@ export class ZoneManager extends ZoneDisplay {
 
     private trackCursorUpdates() {
         Mainloop.timeout_add(25, () => {
-            if(!this.isShowing){
+            if (!this.isShowing) {
                 return false;
             }
             this.highlightZonesAtCursor();
@@ -967,12 +753,12 @@ export class ZoneManager extends ZoneDisplay {
 }
 
 export class TabbedZoneManager extends ZoneManager {
-    constructor(monitor: Monitor, layout: LayoutItem, margin: number) {
+    constructor(monitor: Monitor, layout: Layout, margin: number) {
         super(monitor, layout, margin);
     }
 
-    public createZone(layout: LayoutItem, parent: ZoneGroup) {
-        return new TabbedZone(layout, parent);
+    public createZone(x: number = 0, y: number = 0, width: number = 0, height: number = 0): Zone {
+        return new TabbedZone(x, y, width, height);
     }
 }
 
@@ -990,7 +776,7 @@ class EntryDialogClass extends ModalDialog.ModalDialog {
             throw e;
         }
     }
-    
+
     constructor(params: any) {
         super(params);
         log(JSON.stringify(params));
@@ -1011,15 +797,9 @@ class EntryDialogClass extends ModalDialog.ModalDialog {
         let box = new St.BoxLayout({ vertical: true });
         this.contentLayout.add(box);
 
-        // const MySelf = ExtensionUtils.getCurrentExtension();
-        // let gicon = new Gio.FileIcon({file: Gio.file_new_for_path(MySelf.path + "/icons/icon.png")});
-        // let icon = new St.Icon({gicon: gicon});
-        // box.add(icon);
-
         this.label = new St.Label({ text: "" });
         box.add(this.label);
         box.add(this.entry = new St.Entry({ text: "" }));
-
     }
 }
 
