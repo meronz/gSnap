@@ -356,8 +356,8 @@ class App {
         });
 
         this.restackConnection = global.display.connect('restacked', () => {
-            // log('Evt: restacked');
-            // this.appWorkspaces.currentWorkspaceManagers().forEach(m => m.applyLayout());
+            log('Evt: restacked');
+            this.scheduleApplyLayout();
         });
 
         this.workspaceSwitchedConnect = WorkspaceManager.connect('workspace-switched', () => {
@@ -379,16 +379,7 @@ class App {
                 this.setToCurrentWorkspace();
             }
 
-            // For some reason, Workspace.get_windows() doesn't return the windows list immediately,
-            // but it does after some time.
-            imports.mainloop.timeout_add(50, () => {
-                this.appWorkspaces.getAllManagers().forEach(m => m.isActive = false);
-                this.appWorkspaces.currentWorkspaceManagers().forEach(m => {
-                    m.isActive = true;
-                    m.applyLayout();
-                });
-                return false;
-            });
+            this.scheduleApplyLayout();
 
             let monitorLayouts = this.layouts.workspaces[currentWorkspaceIdx]
                 .map(x => this.layouts.definitions[x.current]);
@@ -422,6 +413,19 @@ class App {
         enabled = true;
 
         log("Extension enable completed");
+    }
+
+    scheduleApplyLayout() {
+        // For some reason, Workspace.get_windows() doesn't return the windows list immediately,
+        // but it does after some time.
+        imports.mainloop.timeout_add(50, () => {
+            this.appWorkspaces.getAllManagers().forEach(m => m.isActive = false);
+            this.appWorkspaces.currentWorkspaceManagers().forEach(m => {
+                m.isActive = true;
+                m.applyLayout();
+            });
+            return false;
+        });
     }
 
     refreshLayouts(): boolean {
