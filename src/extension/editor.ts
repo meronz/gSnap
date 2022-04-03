@@ -696,23 +696,25 @@ export class ZoneManager extends ZoneDisplay {
 
         let winId = win.get_id();
 
+        // This window is already known
+        if(this.zones.some(z => z.windowIds.has(winId))) return;
+
         // First, let's see if we have free zones available
         let zonesToConsider = this.zones.filter(z => z.windowIds.size === 0);
 
+        let nearestZone : Zone;
+
         if (zonesToConsider.length === 1) {
-            // Only one free zone available, put the window there and return
-            zonesToConsider[0].windowIds.add(winId);
-            this.applyLayout();
-            return;
-        }
+            // Only one free zone available, put the window there
+            nearestZone = zonesToConsider[0];
+        } else {
+            if (zonesToConsider.length === 0) {
+                // No free zone, we will consider all zones then
+                zonesToConsider = this.zones;
+            }
 
-        if (zonesToConsider.length === 0) {
-            // No free zone, we will consider all zones then
-            zonesToConsider = this.zones;
-        }
-
-        // Second, find the nearest zone
-        let nearestZone = zonesToConsider.reduce((previousValue: Zone, currentValue: Zone) => {
+            // Second, find the nearest zone
+            nearestZone = zonesToConsider.reduce((previousValue: Zone, currentValue: Zone) => {
                 let winRect = win.get_frame_rect();
                 let winMid = new XY(winRect.x + (winRect.width / 2), winRect.y + (winRect.height / 2));
                 let previousMid = new XY(previousValue.x + (previousValue.width / 2), previousValue.y + (previousValue.height / 2));
@@ -722,12 +724,14 @@ export class ZoneManager extends ZoneDisplay {
                 return currentDistance < previousDistance ? currentValue : previousValue;
             },
             zonesToConsider[0]);
+        }
+
 
         // Add to the zone
         log(`${this.toString()} Pushing ${win.get_wm_class()} (${winId}) to ${nearestZone.toString()}`);
-        this.zonesCleanup([winId]);
         nearestZone.windowIds.add(winId);
-        this.applyLayout();
+
+        // No need to applyLayout() here, a "restacked" event will fire and adjust the windows
     }
 
     private zonesCleanup(removedWindowIds: number[])
