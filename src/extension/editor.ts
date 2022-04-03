@@ -5,7 +5,7 @@ import {log} from './logging';
 
 import {ClutterActor, StBoxLayout, StButton, StWidget, Window} from "./gnometypes";
 
-import {areEqual, getCurrentWindows, getWorkAreaByMonitor, Monitor, WorkArea} from './monitors';
+import {areEqual, getCurrentWindowsOnMonitor, getWorkAreaByMonitor, Monitor, WorkArea} from './monitors';
 import {joinType, JoinType, Rect, Size, XY} from './tilespec';
 import {Layout, LayoutItem} from './layouts';
 import {ExtendedSet} from './utils';
@@ -302,32 +302,35 @@ export class TabbedZone extends Zone {
 }
 
 export class ZoneTab {
-    public buttonWidget: StButton | null;
+    private buttonWidget: StButton;
+    private buttonPressConnect: number = 0;
+
+    public set isVisible(value: boolean) {
+        this.buttonWidget.visible = value;
+    }
 
     constructor(private readonly window: Window, rect: Rect) {
-        this.buttonWidget = new St.Button({style_class: 'tab-button'});
-        if(!this.buttonWidget) return;
+        this.buttonWidget = new St.Button({style_class: 'tab-button'}) as StButton;
         this.buttonWidget.x = rect.origin.x;
         this.buttonWidget.y = rect.origin.y;
         this.buttonWidget.width = rect.size.width;
         this.buttonWidget.height = rect.size.height;
         this.buttonWidget.visible = true;
         this.buttonWidget.label = window.title;
-        this.buttonWidget.connect('button-press-event', () => {
+        this.buttonPressConnect = this.buttonWidget.connect('button-press-event', () => {
             Main.activateWindow(this.window);
         });
         
-        // Tabs are positioned in the window group, just above the background, so to
+        // Tabs are positioned in the window group, just above the background, so they
         // go under any window.
         global.window_group.insert_child_above(this.buttonWidget, 
             global.window_group.first_child);
     }
 
     destroy() {
-        if(!this.buttonWidget) return;
         this.buttonWidget.visible = false;
         global.window_group.remove_child(this.buttonWidget);
-        this.buttonWidget = null;
+        this.buttonWidget.disconnect(this.buttonPressConnect);
     }
 }
 
@@ -638,8 +641,17 @@ export class ZonePreview extends ZoneDisplay {
 }
 
 export class ZoneManager extends ZoneDisplay {
+    private _isActive: boolean = false;
     private isShowing: boolean = false;
     protected virtualZones: Zone[] = [];
+
+    public get isActive(): boolean {
+        return this._isActive && this.zones.length > 0;
+    }
+    
+    public set isActive(value: boolean) {
+        this._isActive = value;
+    }
 
     public highlightZonesUnderCursor() {
         let [x, y] = global.get_pointer();
@@ -650,6 +662,7 @@ export class ZoneManager extends ZoneDisplay {
     } 
 
     public init() {
+        this._isActive = true;
         this.virtualZones?.forEach(z => z.destroy());
         this.virtualZones = [];
         super.init();
@@ -657,7 +670,7 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public initialLayout() {
-        let currentWindows = getCurrentWindows();
+        let currentWindows = getCurrentWindowsOnMonitor(this.monitor);
         log(`${this.toString()} Initial Layout windows start ${currentWindows.length}`);
         for (const zone of this.zones) {
             let windows = this.windowsCurrentlyPresentInZone(zone);
@@ -671,6 +684,7 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public destroy() {
+        this.isActive = false;
         log(`${this.toString()}::Destroy`);
         this.virtualZones.forEach(z => z.destroy());
         super.destroy();
@@ -678,6 +692,8 @@ export class ZoneManager extends ZoneDisplay {
 
     // Add window to the nearest free zone.
     public addWindow(win: Window) {
+        if(!this.isActive) return;
+
         let winId = win.get_id();
 
         // First, let's see if we have free zones available
@@ -730,7 +746,7 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public moveWindowToZoneUnderCursor(win: Window) {
-        if (this.zones.length == 0) return;
+        if(!this.isActive) return;
 
         let winId = win.get_id();
 
@@ -771,7 +787,7 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public windowsCurrentlyPresentInZone(zone: Zone) : Window[] {
-        let currentWindows = getCurrentWindows();
+        let currentWindows = getCurrentWindowsOnMonitor(this.monitor);
         let result = new Array<Window>();
         for(const win of currentWindows) {
             let outerRect = win.get_frame_rect();
@@ -813,11 +829,14 @@ export class ZoneManager extends ZoneDisplay {
         return new Rect(new XY(x, y), new Size(w, h));
     }
 
+    // Reapply the layout for every window in zones.
+    // This works only on the current workspace.
     public applyLayout() {
-        if(this.zones.length === 0) return;
+        if(!this.isActive) return;
 
-        let currentWindows = getCurrentWindows();
+        let currentWindows = getCurrentWindowsOnMonitor(this.monitor);
         let currentWindowsIds = new Set(currentWindows.map(w => w.get_id()));
+        log(`${this.toString()} currentWindows: ${[...currentWindowsIds]}`);
 
         for (const zone of this.zones) {
             // remove non-existing windows
@@ -846,6 +865,8 @@ export class ZoneManager extends ZoneDisplay {
     }
 
     public show() {
+        if(!this.isActive) return;
+
         this.isShowing = true;
         super.show();
         this.trackCursorUpdates();
@@ -870,6 +891,15 @@ export class ZoneManager extends ZoneDisplay {
 export class TabbedZoneManager extends ZoneManager {
     public createZone(x: number, y: number, width: number, height: number, margin: number): Zone {
         return new TabbedZone(x, y, width, height, margin);
+    }
+
+    public override get isActive() {
+        return super.isActive;
+    }
+
+    public override set isActive(active: boolean) {
+        super.isActive = active;
+        (this.zones as TabbedZone[]).forEach(tz => tz.tabs.forEach(t => t.isVisible = active));
     }
 }
 

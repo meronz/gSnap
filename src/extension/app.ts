@@ -320,7 +320,7 @@ class App {
 
         monitorsChangedConnect = Main.layoutManager.connect('monitors-changed', () => {
             log('Evt: monitors-changed');
-            this.appWorkspaces.getAllManagers().forEach(m => m.applyLayout());
+            //this.appWorkspaces.getAllManagers().forEach(m => m.applyLayout());
             this.reloadMenu();
         });
 
@@ -356,8 +356,8 @@ class App {
         });
 
         this.restackConnection = global.display.connect('restacked', () => {
-            log('Evt: restacked');
-            this.appWorkspaces.currentWorkspaceManagers().forEach(m => m.applyLayout());
+            // log('Evt: restacked');
+            // this.appWorkspaces.currentWorkspaceManagers().forEach(m => m.applyLayout());
         });
 
         this.workspaceSwitchedConnect = WorkspaceManager.connect('workspace-switched', () => {
@@ -371,13 +371,29 @@ class App {
                     gridSettings[SETTINGS.WINDOW_MARGIN],
                     this.layouts.workspaces[currentWorkspaceIdx].map(x => this.layouts.definitions[x.current])
                 );
+
+                if (this.refreshLayouts()) {
+                    this.saveLayouts();
+                }
+
+                this.setToCurrentWorkspace();
             }
 
-            if (this.refreshLayouts()) {
-                this.saveLayouts();
-            }
+            // For some reason, Workspace.get_windows() doesn't return the windows list immediately,
+            // but it does after some time.
+            imports.mainloop.timeout_add(50, () => {
+                this.appWorkspaces.getAllManagers().forEach(m => m.isActive = false);
+                this.appWorkspaces.currentWorkspaceManagers().forEach(m => {
+                    m.isActive = true;
+                    m.applyLayout();
+                });
+                return false;
+            });
 
-            this.setToCurrentWorkspace();
+            let monitorLayouts = this.layouts.workspaces[currentWorkspaceIdx]
+                .map(x => this.layouts.definitions[x.current]);
+            this.appWorkspaces.recreateEditors(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
+            this.appWorkspaces.recreatePreviews(monitorLayouts, gridSettings[SETTINGS.WINDOW_MARGIN]);
         });
 
         this.workareasChangedConnect = global.display.connect('workareas-changed', () => {
