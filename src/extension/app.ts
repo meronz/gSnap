@@ -52,6 +52,8 @@ const GObject = imports.gi.GObject;
 const PanelMenu = imports.ui.panelMenu;
 const PopupMenu = imports.ui.popupMenu;
 const GLib = imports.gi.GLib;
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
 
 // Getter for accesing "get_active_workspace" on GNOME <=2.28 and >= 2.30
 const WorkspaceManager: WorkspaceManagerInterface = (
@@ -244,6 +246,8 @@ class AppWorkspace {
 
 class App {
     private readonly appWorkspaces: AppWorkspace = new AppWorkspace();
+    private readonly layoutsPath = `${Me.path}/layouts.json`;
+    private readonly layoutsDefaultPath =`${Me.path}/layouts-default.json`;
 
     private get currentLayout(): Layout {
         let wI = WorkspaceManager.get_active_workspace_index();
@@ -293,7 +297,7 @@ class App {
 
     enable() {
         try {
-            let [ok, contents] = GLib.file_get_contents(getCurrentPath()?.replace("/extension.js", "/layouts.json"));
+            let [ok, contents] = GLib.file_get_contents(this.layoutsPath);
             if (ok) {
                 log("Loaded contents " + contents);
                 this.layouts = JSON.parse(contents);
@@ -304,7 +308,7 @@ class App {
             }
         } catch (exception) {
             log(JSON.stringify(exception));
-            let [ok, contents] = GLib.file_get_contents(getCurrentPath()?.replace("/extension.js", "/layouts-default.json"));
+            let [ok, contents] = GLib.file_get_contents(this.layoutsDefaultPath);
             if (ok) {
                 this.layouts = JSON.parse(contents);
                 this.refreshLayouts();
@@ -580,7 +584,7 @@ class App {
             editor.destroy();
         }
 
-        GLib.file_set_contents(getCurrentPath()?.replace("/extension.js", "/layouts.json"), JSON.stringify(this.layouts));
+        GLib.file_set_contents(this.layoutsPath, JSON.stringify(this.layouts));
         log(JSON.stringify(this.layouts));
 
         let windows = WorkspaceManager.get_active_workspace().list_windows();
